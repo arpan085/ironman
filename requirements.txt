@@ -1,5 +1,5 @@
 opencv-python>=4.10.0
-mediapipe>=0.10.14
+mediapipe==0.10.14
 numpy>=1.26.0
 pygame>=2.6.0
 pyautogui>=0.9.54
