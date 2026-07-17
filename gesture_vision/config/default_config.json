@@ -1,0 +1,13 @@
+{
+  "app_name": "Ironman Gesture Vision Suite",
+  "camera_index": 0,
+  "target_fps": 30,
+  "window_width": 1280,
+  "window_height": 720,
+  "theme": "dark",
+  "brush_size": 10,
+  "draw_color": [0, 255, 255],
+  "eraser_size": 40,
+  "smooth_factor": 0.35,
+  "record_output_dir": "captures"
+}
