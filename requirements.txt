@@ -1,9 +1,10 @@
 opencv-python>=4.10.0
-mediapipe==0.10.14
+mediapipe>=0.10.35
 numpy>=1.26.0
+Pillow>=10.4.0
+psutil>=5.9.0
 pygame>=2.6.0
 pyautogui>=0.9.54
 screen-brightness-control>=0.24.0
-Pillow>=10.4.0
 pycaw>=20240210
 comtypes>=1.4.5

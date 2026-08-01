@@ -44,6 +44,8 @@ class VirtualDrawingCanvasMode(BaseMode):
         if point is None:
             self.prev = None
         else:
+            if self.prev is None:
+                self.snapshot()
             if self.prev is not None:
                 color = (0, 0, 0) if self.eraser else self.color
                 size = max(2, self.brush_size * (2 if self.eraser else 1))
@@ -51,8 +53,16 @@ class VirtualDrawingCanvasMode(BaseMode):
             self.prev = point
 
         blended = cv2.addWeighted(frame, 1.0, canvas, 0.95, 0)
-        cv2.putText(blended, "1 Canvas | C Clear | U Undo | E Eraser | S Save", (18, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(blended, "1 Canvas | C Clear | U Undo | E Eraser | P Palette | S Save", (18, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         return blended
+
+    def on_key(self, key: int, char: str) -> bool:
+        """Cycle palette with the P key."""
+
+        if key == ord("p"):
+            self.cycle_palette()
+            return True
+        return False
 
     def cycle_palette(self) -> None:
         """Cycle through a fixed color palette."""

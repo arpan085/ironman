@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from ..core.model_cache import HAAR_FRONTALFACE_URL, ensure_model
 
 
 class FaceFilterMode(BaseMode):
-    """Applies sunglasses/hat/cartoon effect using Haar cascade fallback."""
+    """Applies sunglasses/hat/cartoon effect using a Haar cascade detector."""
 
     name = "face_filter"
     shortcut = "F3"
@@ -20,14 +22,29 @@ class FaceFilterMode(BaseMode):
         self._face_cascade = None
 
     def _detector(self) -> Any:
-        """Lazily create OpenCV Haar face detector."""
+        """Lazily create the OpenCV Haar face detector from local sources."""
 
         if self._face_cascade is not None:
             return self._face_cascade
         try:
             import cv2  # type: ignore
 
-            self._face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            candidates: list[Path] = []
+            data_dir = getattr(getattr(cv2, "data", None), "haarcascades", "")
+            if data_dir:
+                candidates.append(Path(data_dir) / "haarcascade_frontalface_default.xml")
+            cached = ensure_model(
+                "haarcascade_frontalface_default.xml", HAAR_FRONTALFACE_URL
+            )
+            if cached is not None:
+                candidates.append(cached)
+
+            for candidate in candidates:
+                if candidate.exists():
+                    cascade = cv2.CascadeClassifier(str(candidate))
+                    if not cascade.empty():
+                        self._face_cascade = cascade
+                        break
         except Exception:
             self._face_cascade = None
         return self._face_cascade

@@ -2,4 +2,11 @@ __pycache__/
 *.pyc
 .venv/
 captures/
+signatures/
 gesture_vision.log
+gesture_vision/assets/models/*.task
+gesture_vision/assets/models/*.xml
+images/*
+!images/.gitkeep
+music/*
+!music/.gitkeep

@@ -75,14 +75,31 @@ class MusicPlayerMode(BaseMode):
             self.idx = (self.idx - 1) % len(self.tracks)
             self.play_pause()
 
+    def on_key(self, key: int, char: str) -> bool:
+        """Handle playback transport keys."""
+
+        if key == ord("n"):
+            self.next_track()
+            return True
+        if key == ord("b"):
+            self.prev_track()
+            return True
+        if key == 32:
+            self.play_pause()
+            return True
+        return False
+
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
         """Render current playback info overlay."""
 
         import cv2  # type: ignore
 
-        name = self.tracks[self.idx].name if self.tracks else "No tracks"
-        status = "Playing" if self.is_playing else "Paused"
         cv2.putText(frame, "F5 Music Player", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        if not self.tracks:
+            cv2.putText(frame, "No tracks found - add mp3/wav/ogg files to ./music", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 255, 220), 2)
+            return frame
+        name = self.tracks[self.idx].name
+        status = "Playing" if self.is_playing else "Paused"
         cv2.putText(frame, f"Track: {name}", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 255, 220), 2)
         cv2.putText(frame, f"State: {status} | N next | B back | SPACE play/pause", (18, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 220, 255), 2)
         return frame

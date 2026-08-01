@@ -19,7 +19,8 @@ class VirtualMouseMode(BaseMode):
         """Initialize smoothing and interaction flags."""
 
         self.filter = PointFilter(alpha=0.4)
-        self.drag_mode = False
+        self._last_fingers = 0
+        self._cooldown = 0
 
     def _mouse(self) -> Any:
         """Return optional pyautogui module when available."""
@@ -45,14 +46,20 @@ class VirtualMouseMode(BaseMode):
             sx, sy = mouse.size()
             smoothed = self.filter.apply(*pointer)
             mouse.moveTo(smoothed[0] * sx / w, smoothed[1] * sy / h, duration=0)
-            if fingers == 2:
-                mouse.click()
-            elif fingers == 3:
-                mouse.rightClick()
-            elif fingers == 4:
-                mouse.doubleClick()
-            elif fingers == 5:
-                mouse.scroll(40)
 
+            if self._cooldown > 0:
+                self._cooldown -= 1
+            elif fingers != self._last_fingers and fingers >= 2:
+                if fingers == 2:
+                    mouse.click()
+                elif fingers == 3:
+                    mouse.rightClick()
+                elif fingers == 4:
+                    mouse.doubleClick()
+                elif fingers == 5:
+                    mouse.scroll(40)
+                self._cooldown = 8
+
+        self._last_fingers = fingers
         cv2.putText(frame, "7 Virtual Mouse | 2 left 3 right 4 double 5 scroll", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         return frame
