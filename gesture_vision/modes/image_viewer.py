@@ -56,5 +56,29 @@ class ImageViewerMode(BaseMode):
                 y = max(0, (hh - rh) // 2)
                 canvas[y : y + min(hh - y, rh), x : x + min(ww - x, rw)] = rotated[: min(hh - y, rh), : min(ww - x, rw)]
 
-        draw_instruction(canvas, "F4", "image_viewer", "[ ] swipe | -/+ zoom | R rotate")
+        draw_instruction(canvas, "F4", "image_viewer", "[ ] swipe | -/+ zoom | r reset view")
         return canvas
+
+    def on_key(self, key: int) -> bool:
+        """Handle local image navigation and transform keys."""
+
+        if key == ord("["):
+            self.prev()
+            return True
+        if key == ord("]"):
+            self.next()
+            return True
+        if key == ord("-"):
+            self.zoom = max(0.2, self.zoom - 0.1)
+            return True
+        if key in {ord("+"), ord("=")}:
+            self.zoom = min(3.0, self.zoom + 0.1)
+            return True
+        if key == ord("r"):
+            self.zoom = 1.0
+            self.angle = 0.0
+            return True
+        if key == ord("R"):
+            self.angle = (self.angle + 15.0) % 360.0
+            return True
+        return False

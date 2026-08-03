@@ -7,6 +7,8 @@ from pathlib import Path
 import tempfile
 import unittest
 import sys
+import types
+from unittest.mock import patch
 
 import numpy as np
 
@@ -16,6 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from gesture_vision.config import AppConfig, load_config
+from gesture_vision.app import GestureVisionApp
 from gesture_vision.core.base_mode import BaseMode
 from gesture_vision.core.mode_manager import ModeManager
 from gesture_vision.core.recorder import Recorder
@@ -172,6 +175,77 @@ class UtilityTests(unittest.TestCase):
         self.assertEqual(assistant.parse_command("jarvis"), assistant.parse_command("Jarvis"))
         self.assertEqual(assistant.parse_command("jarvis status").kind, "status_report")
         self.assertEqual(assistant.parse_command("jarvis virtual mouse").payload, "virtual_mouse")
+
+    def test_suit_assistant_degrades_without_pyaudio(self) -> None:
+        """Assistant start should degrade gracefully when microphone backend is unavailable."""
+
+        manager = ModeManager([_DummyMode("virtual_mouse", "7")])
+        with patch.object(SuitAssistant, "_init_tts", lambda self: None):
+            assistant = SuitAssistant(AppConfig(), manager)
+        fake_sr = types.SimpleNamespace(
+            Recognizer=lambda: object(),
+            Microphone=lambda: (_ for _ in ()).throw(AttributeError("Could not find PyAudio")),
+            WaitTimeoutError=Exception,
+        )
+        with patch.dict(sys.modules, {"speech_recognition": fake_sr}):
+            assistant.start()
+        self.assertFalse(assistant.listening)
+        self.assertIsNone(assistant.poll_command())
+
+
+class AppBehaviorTests(unittest.TestCase):
+    """Validate app-level splash and reset behavior."""
+
+    def test_splash_flag_can_be_disabled_by_override(self) -> None:
+        """CLI override should disable splash even when config enables it."""
+
+        cfg = AppConfig(show_splash_screen=True, assistant_enabled=False)
+        app = GestureVisionApp(config=cfg, show_splash_override=False)
+        self.assertFalse(app.show_splash_screen)
+
+    def test_soft_reset_reinitializes_active_mode_and_counters(self) -> None:
+        """Global reset should rebuild active mode state without restarting app process."""
+
+        cfg = AppConfig(show_splash_screen=False, assistant_enabled=False)
+        app = GestureVisionApp(config=cfg)
+        app.mode_manager.switch("finger_keyboard")
+        mode_before = app.mode_manager.active_mode
+        setattr(mode_before, "typed", "IRON")
+        app.fps_live = 61.2
+        app.cpu_load = 1.7
+        app.temperature_c = 52.5
+        app._reset_active_mode()
+        mode_after = app.mode_manager.active_mode
+        self.assertEqual(mode_after.name, "finger_keyboard")
+        self.assertNotEqual(id(mode_before), id(mode_after))
+        self.assertEqual(getattr(mode_after, "typed", ""), "")
+        self.assertEqual(app.fps_live, 0.0)
+        self.assertEqual(app.cpu_load, 0.0)
+        self.assertEqual(app.temperature_c, 0.0)
+
+    def test_quit_keys_are_handled_globally_first(self) -> None:
+        """Esc and Q should always return False from global key handler."""
+
+        cfg = AppConfig(show_splash_screen=False, assistant_enabled=False)
+        app = GestureVisionApp(config=cfg)
+        frame = np.zeros((200, 300, 3), dtype=np.uint8)
+        self.assertFalse(app._handle_key(27, frame))
+        self.assertFalse(app._handle_key(ord("q"), frame))
+        self.assertFalse(app._handle_key(ord("Q"), frame))
+
+    def test_mode_specific_r_consumption_blocks_global_reset(self) -> None:
+        """Global reset should not run when active mode consumes R/r key."""
+
+        cfg = AppConfig(show_splash_screen=False, assistant_enabled=False)
+        app = GestureVisionApp(config=cfg)
+        app.mode_manager.switch("image_viewer")
+        calls = {"reset": 0}
+        original = app._reset_active_mode
+        app._reset_active_mode = lambda: calls.__setitem__("reset", calls["reset"] + 1)
+        frame = np.zeros((200, 300, 3), dtype=np.uint8)
+        app._handle_key(ord("r"), frame)
+        app._reset_active_mode = original
+        self.assertEqual(calls["reset"], 0)
 
 
 if __name__ == "__main__":

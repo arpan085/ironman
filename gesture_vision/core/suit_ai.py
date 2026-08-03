@@ -49,6 +49,7 @@ class SuitAssistant:
         self._commands: queue.Queue[str] = queue.Queue()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._listening = False
         self._voice_api = None
         self._recognizer = None
         self._microphone = None
@@ -75,6 +76,8 @@ class SuitAssistant:
     def start(self) -> None:
         """Start wake-word listener if speech dependencies are present."""
 
+        if self._thread is not None and self._thread.is_alive():
+            return
         try:
             import speech_recognition as sr  # type: ignore
         except ImportError:
@@ -83,14 +86,16 @@ class SuitAssistant:
         try:
             recognizer = sr.Recognizer()
             microphone = sr.Microphone()
-        except OSError as exc:
-            LOGGER.warning("No usable microphone for wake-word listener: %s", exc)
+        except (AttributeError, OSError) as exc:
+            LOGGER.warning("Voice unavailable: microphone backend is not ready (%s).", exc)
             return
+        self._stop_event.clear()
         self._voice_api = sr
         self._recognizer = recognizer
         self._microphone = microphone
         self._thread = threading.Thread(target=self._listen_loop, name="suit-assistant-listener", daemon=True)
         self._thread.start()
+        self._listening = True
 
     def stop(self) -> None:
         """Stop listener thread and release resources."""
@@ -98,6 +103,19 @@ class SuitAssistant:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=1.5)
+        self._listening = False
+        self._thread = None
+
+    @property
+    def listening(self) -> bool:
+        """Return True when wake-word listener thread is running."""
+
+        return self._listening
+
+    def attach_mode_manager(self, mode_manager: ModeManager) -> None:
+        """Refresh mode manager reference after app-level mode reset."""
+
+        self._mode_manager = mode_manager
 
     def _listen_loop(self) -> None:
         """Capture phrase transcripts and enqueue them for app-loop parsing."""

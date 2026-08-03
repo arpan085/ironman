@@ -12,6 +12,7 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 - Logging + screenshot/video capture utilities
 - Gesture recording hooks and keyboard shortcut controls
 - Jarvis-style wake word hooks, cinematic HUD shell effects, and suit-status voice telemetry
+- Startup splash initialization screen with optional skip flag and fullscreen startup support
 
 ## Project Structure
 
@@ -100,8 +101,10 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 - `S` screenshot
 - `V` start video recording
 - `Z` stop recording
-- `R` speak suit-status telemetry
+- `T` speak suit-status telemetry
+- `R` soft reset active mode/session state (unless consumed by active mode)
 - `H` toggle help overlay
+- `L` toggle compact mode list overlay
 - `Q` or `Esc` quit
 
 ## Run
@@ -111,6 +114,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python3 -m gesture_vision.main
+python3 -m gesture_vision.main --no-splash
 ```
 
 ## Notes
@@ -120,3 +124,4 @@ python3 -m gesture_vision.main
 - Target FPS can be tuned in `gesture_vision/config/default_config.json`.
 - Wake-word listening uses `SpeechRecognition` and microphone support (install `PyAudio` on systems where your mic backend needs it).
 - Voice responses use `pyttsx3`.
+- Splash/fullscreen/assistant toggles are configurable in `gesture_vision/config/default_config.json`.
