@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import logging
 import queue
 import random
+import re
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -56,6 +57,8 @@ class SuitAssistant:
         self._tts = None
         self._tts_lock = threading.Lock()
         self._rng = random.Random()
+        self._microphone_available = False
+        self._tts_engine_name = ""
         self._init_tts()
 
     def _init_tts(self) -> None:
@@ -66,11 +69,27 @@ class SuitAssistant:
         except ImportError:
             LOGGER.info("pyttsx3 not installed: voice responses disabled.")
             return
+
+        for driver_name in (None, "sapi5"):
+            try:
+                engine = pyttsx3.init(driver_name) if driver_name else pyttsx3.init()
+                engine.setProperty("rate", 176)
+                self._tts = engine
+                self._tts_engine_name = "pyttsx3"
+                return
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("TTS driver failed: %s", exc)
+
         try:
-            self._tts = pyttsx3.init()
-            self._tts.setProperty("rate", 176)
-        except RuntimeError as exc:
-            LOGGER.warning("Failed to initialize TTS engine: %s", exc)
+            import win32com.client as wincl  # type: ignore
+        except ImportError:
+            LOGGER.warning("No supported speech engine available; voice responses disabled.")
+            return
+        try:
+            self._tts = wincl.Dispatch("SAPI.SpVoice")
+            self._tts_engine_name = "sapi"
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Failed to initialize Windows SAPI voice: %s", exc)
             self._tts = None
 
     def start(self) -> None:
@@ -78,6 +97,7 @@ class SuitAssistant:
 
         if self._thread is not None and self._thread.is_alive():
             return
+        self._microphone_available = False
         try:
             import speech_recognition as sr  # type: ignore
         except ImportError:
@@ -93,6 +113,7 @@ class SuitAssistant:
         self._voice_api = sr
         self._recognizer = recognizer
         self._microphone = microphone
+        self._microphone_available = True
         self._thread = threading.Thread(target=self._listen_loop, name="suit-assistant-listener", daemon=True)
         self._thread.start()
         self._listening = True
@@ -120,6 +141,12 @@ class SuitAssistant:
 
         return self._listening
 
+    @property
+    def microphone_available(self) -> bool:
+        """Return True when the assistant has a usable microphone backend."""
+
+        return self._microphone_available
+
     def attach_mode_manager(self, mode_manager: ModeManager) -> None:
         """Refresh mode manager reference after app-level mode reset."""
 
@@ -129,25 +156,32 @@ class SuitAssistant:
         """Capture phrase transcripts and enqueue them for app-loop parsing."""
 
         if self._voice_api is None or self._recognizer is None or self._microphone is None:
+            self._listening = False
             return
         sr = self._voice_api
-        with self._microphone as source:
-            self._recognizer.adjust_for_ambient_noise(source, duration=0.4)
-            while not self._stop_event.is_set():
-                try:
-                    audio = self._recognizer.listen(source, timeout=1.0, phrase_time_limit=3.0)
-                except sr.WaitTimeoutError:
-                    continue
-                try:
-                    transcript = self._recognizer.recognize_google(audio).lower().strip()
-                except sr.UnknownValueError:
-                    continue
-                except sr.RequestError as exc:
-                    LOGGER.warning("Wake-word speech service error: %s", exc)
-                    time.sleep(1.0)
-                    continue
-                if transcript:
-                    self._commands.put(transcript)
+        try:
+            with self._microphone as source:
+                self._recognizer.adjust_for_ambient_noise(source, duration=0.4)
+                while not self._stop_event.is_set():
+                    try:
+                        audio = self._recognizer.listen(source, timeout=1.0, phrase_time_limit=3.0)
+                    except sr.WaitTimeoutError:
+                        continue
+                    try:
+                        transcript = self._recognizer.recognize_google(audio).lower().strip()
+                    except sr.UnknownValueError:
+                        continue
+                    except sr.RequestError as exc:
+                        LOGGER.warning("Wake-word speech service error: %s", exc)
+                        time.sleep(1.0)
+                        continue
+                    if transcript:
+                        self._commands.put(transcript)
+        except (AssertionError, AttributeError, OSError) as exc:
+            LOGGER.warning("Voice listener stopped due to microphone backend error: %s", exc)
+            self._microphone_available = False
+        finally:
+            self._listening = False
 
     def poll_command(self) -> VoiceCommand | None:
         """Fetch and parse the next queued wake-word command."""
@@ -168,27 +202,103 @@ class SuitAssistant:
         if wake_index < 0:
             return None
 
-        tail = lowered[wake_index + len(self._wake_word) :].strip(" ,.!?")
+        tail = re.sub(r"\s+", " ", lowered[wake_index + len(self._wake_word) :]).strip(" ,.!?")
         if not tail:
             return VoiceCommand(kind="wake_ack")
 
+        if any(token in tail for token in ("hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening")):
+            return VoiceCommand(kind="greeting")
+        if any(token in tail for token in ("how are you", "how are u", "how are you doing", "what's up", "whats up")):
+            return VoiceCommand(kind="greeting")
+        if any(token in tail for token in ("who are you", "introduce yourself", "what can you do", "what can you help me with")):
+            return VoiceCommand(kind="introduction")
         if "status" in tail or "telemetry" in tail:
             return VoiceCommand(kind="status_report")
-        if "help" in tail:
+        if any(token in tail for token in ("show help", "toggle help", "open help", "help overlay")):
             return VoiceCommand(kind="help_overlay")
         if "shutdown" in tail or "power down" in tail:
             return VoiceCommand(kind="shutdown")
+        if any(token in tail for token in ("reset", "restart")):
+            return VoiceCommand(kind="system_action", payload="reset")
+        if "clear" in tail:
+            return VoiceCommand(kind="system_action", payload="clear")
+        if "undo" in tail:
+            return VoiceCommand(kind="system_action", payload="undo")
+        if "eraser" in tail:
+            return VoiceCommand(kind="system_action", payload="eraser")
+        if "snapshot" in tail or "screenshot" in tail:
+            return VoiceCommand(kind="system_action", payload="snapshot")
+        if "record" in tail and "stop" not in tail:
+            return VoiceCommand(kind="system_action", payload="record")
+        if "stop recording" in tail or "stop video" in tail:
+            return VoiceCommand(kind="system_action", payload="stop_recording")
 
-        best_mode = ""
-        for info in self._mode_manager.list_modes():
-            spoken = info.name.replace("_", " ")
-            if spoken in tail:
-                best_mode = info.name
-                break
+        for prefix in ("open ", "launch ", "start ", "show "):
+            if tail.startswith(prefix):
+                target = tail[len(prefix) :].strip()
+                if target:
+                    return VoiceCommand(kind="open_target", payload=target)
+
+        for prefix in ("close ", "exit ", "quit ", "stop "):
+            if tail.startswith(prefix):
+                target = tail[len(prefix) :].strip()
+                if target:
+                    return VoiceCommand(kind="close_target", payload=target)
+
+        mode_match = re.search(r"(?:change|switch|go to|open|activate) (?:mode )?(?:to )?(.*)$", tail)
+        if mode_match:
+            target = mode_match.group(1).strip()
+            if target:
+                best_mode = self._resolve_mode_name(target)
+                if best_mode:
+                    return VoiceCommand(kind="switch_mode", payload=best_mode)
+
+        best_mode = self._resolve_mode_name(tail)
         if best_mode:
             return VoiceCommand(kind="switch_mode", payload=best_mode)
 
         return VoiceCommand(kind="unknown", payload=tail)
+
+    def _resolve_mode_name(self, phrase: str) -> str:
+        """Resolve a spoken mode phrase to a registered mode name."""
+
+        normalized = phrase.replace("_", " ").strip().lower()
+
+        aliases = {
+            "virtual drawing canvas": "virtual_drawing_canvas",
+            "drawing canvas": "virtual_drawing_canvas",
+            "draw": "virtual_drawing_canvas",
+            "air painter": "air_painter",
+            "finger counter": "finger_counter",
+            "rock paper scissors": "rps_ai",
+            "rock paper scissors ai": "rps_ai",
+            "volume controller": "volume_controller",
+            "brightness controller": "brightness_controller",
+            "virtual mouse": "virtual_mouse",
+            "finger keyboard": "finger_keyboard",
+            "gesture calculator": "gesture_calculator",
+            "virtual whiteboard": "virtual_whiteboard",
+            "color tracking": "color_tracking",
+            "object measurement": "object_measurement",
+            "face filter": "face_filter",
+            "image viewer": "image_viewer",
+            "music player": "music_player",
+            "hand animation": "hand_animation",
+            "gesture games": "gesture_games",
+            "finger magic": "finger_magic",
+            "emoji detector": "emoji_detector",
+            "performance hud": "performance_hud",
+        }
+        if normalized in aliases:
+            return aliases[normalized]
+
+        for info in self._mode_manager.list_modes():
+            spoken = info.name.replace("_", " ")
+            if spoken == normalized:
+                return info.name
+            if spoken.replace(" ", "") == normalized.replace(" ", ""):
+                return info.name
+        return ""
 
     def speak(self, text: str) -> None:
         """Speak a short line if TTS is available."""
@@ -197,10 +307,26 @@ class SuitAssistant:
             return
         with self._tts_lock:
             try:
-                self._tts.say(text)
-                self._tts.runAndWait()
+                if self._tts_engine_name == "sapi":
+                    self._tts.Speak(text)
+                else:
+                    self._tts.say(text)
+                    self._tts.runAndWait()
             except RuntimeError as exc:
                 LOGGER.warning("TTS playback failed: %s", exc)
+            except AttributeError as exc:
+                LOGGER.warning("TTS engine interface mismatch: %s", exc)
+
+    def speak_intro_sequence(self) -> None:
+        """Speak a richer startup sequence for Jarvis."""
+
+        self.speak("Initializing neural interface.")
+        time.sleep(0.2)
+        self.speak("Primary systems online.")
+        time.sleep(0.2)
+        self.speak("Visual tracking and gesture controls are ready.")
+        time.sleep(0.2)
+        self.speak("At your service, sir.")
 
     def confirm(self, action: str) -> None:
         """Speak one of the configured confirmation phrases."""

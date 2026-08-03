@@ -9,3 +9,6 @@ pycaw>=20240210
 comtypes>=1.4.5
 SpeechRecognition>=3.10.4
 pyttsx3>=2.98
+pyaudio>=0.2.14
+pywin32>=310
+psutil>=5.9.0

@@ -176,6 +176,8 @@ class UtilityTests(unittest.TestCase):
         self.assertEqual(assistant.parse_command("jarvis"), assistant.parse_command("Jarvis"))
         self.assertEqual(assistant.parse_command("jarvis status").kind, "status_report")
         self.assertEqual(assistant.parse_command("jarvis virtual mouse").payload, "virtual_mouse")
+        self.assertEqual(assistant.parse_command("jarvis hello").kind, "greeting")
+        self.assertEqual(assistant.parse_command("jarvis open youtube").kind, "open_target")
 
     def test_suit_assistant_degrades_without_pyaudio(self) -> None:
         """Assistant start should degrade gracefully when microphone backend is unavailable."""
@@ -213,6 +215,31 @@ class UtilityTests(unittest.TestCase):
         self.assertIsNone(assistant._recognizer)
         self.assertIsNone(assistant._microphone)
 
+    def test_suit_assistant_listen_loop_handles_mic_runtime_failure(self) -> None:
+        """Listener loop should degrade and stop when microphone stream fails at runtime."""
+
+        manager = ModeManager([_DummyMode("virtual_mouse", "7")])
+        with patch.object(SuitAssistant, "_init_tts", lambda self: None):
+            assistant = SuitAssistant(AppConfig(), manager)
+
+        class _Mic:
+            def __enter__(self):
+                return object()
+
+            def __exit__(self, exc_type, exc, tb):
+                raise AttributeError("stream close failed")
+
+        class _Recognizer:
+            def adjust_for_ambient_noise(self, source, duration):  # noqa: ARG002
+                raise AssertionError("Audio source must be entered before adjusting")
+
+        assistant._voice_api = types.SimpleNamespace(WaitTimeoutError=Exception, UnknownValueError=Exception, RequestError=Exception)
+        assistant._recognizer = _Recognizer()
+        assistant._microphone = _Mic()
+        assistant._listening = True
+        assistant._listen_loop()
+        self.assertFalse(assistant.listening)
+
 
 class AppBehaviorTests(unittest.TestCase):
     """Validate app-level splash and reset behavior."""
@@ -244,6 +271,31 @@ class AppBehaviorTests(unittest.TestCase):
         self.assertEqual(app.cpu_load, 0.0)
         self.assertEqual(app.temperature_c, 0.0)
 
+    def test_j_hotkey_toggles_assistant_listener(self) -> None:
+        """J/J should start or stop the assistant overlay without changing app mode."""
+
+        cfg = AppConfig(show_splash_screen=False, assistant_enabled=True)
+        app = GestureVisionApp(config=cfg)
+        frame = np.zeros((200, 300, 3), dtype=np.uint8)
+        with patch.object(app.assistant, "start") as mock_start, patch.object(app.assistant, "stop") as mock_stop, patch.object(app.assistant, "speak"):
+            app.assistant._listening = False
+            app._handle_key(ord("j"), frame)
+            mock_start.assert_called_once()
+            self.assertTrue(app.assistant_overlay_active)
+            app.assistant._listening = True
+            app._handle_key(ord("j"), frame)
+            mock_stop.assert_called_once()
+            self.assertFalse(app.assistant_overlay_active)
+
+    def test_function_key_shortcuts_switch_modes(self) -> None:
+        """Function-key shortcuts such as F1 should switch modes correctly."""
+
+        cfg = AppConfig(show_splash_screen=False, assistant_enabled=False)
+        app = GestureVisionApp(config=cfg)
+        frame = np.zeros((200, 300, 3), dtype=np.uint8)
+        app._handle_key(0x70, frame)
+        self.assertEqual(app.mode_manager.active_mode.name, "color_tracking")
+
     def test_quit_keys_are_handled_globally_first(self) -> None:
         """Esc and Q should always return False from global key handler."""
 
@@ -267,6 +319,19 @@ class AppBehaviorTests(unittest.TestCase):
         app._handle_key(ord("r"), frame)
         app._reset_active_mode = original
         self.assertEqual(calls["reset"], 0)
+
+    def test_cpu_temp_falls_back_when_psutil_lacks_temperature_api(self) -> None:
+        """Temperature collection should fall back when psutil has no sensors_temperatures."""
+
+        cfg = AppConfig(show_splash_screen=False, assistant_enabled=False)
+        app = GestureVisionApp(config=cfg)
+        app.cpu_load = 0.0
+        app.fps_live = 0.0
+        fake_psutil = types.SimpleNamespace(sensors_battery=lambda: None)
+        with patch.dict(sys.modules, {"psutil": fake_psutil}):
+            temp = app._read_cpu_temperature_c()
+        self.assertGreaterEqual(temp, 30.0)
+        self.assertTrue(app._temperature_estimated)
 
 
 if __name__ == "__main__":

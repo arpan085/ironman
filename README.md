@@ -102,6 +102,7 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 - `V` start video recording
 - `Z` stop recording
 - `T` speak suit-status telemetry
+- `J` enter/exit the Jarvis cinematic overlay and temporarily pause normal camera mode
 - `R` soft reset active mode/session state (unless consumed by active mode)
 - `H` toggle help overlay
 - `L` toggle compact mode list overlay
@@ -109,12 +110,21 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 
 ## Run
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 -m gesture_vision.main
-python3 -m gesture_vision.main --no-splash
+Windows PowerShell:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m gesture_vision.main
+python -m gesture_vision.main --no-splash
+```
+
+If `pip` cannot build `PyAudio` on Windows, install a wheel instead:
+
+```powershell
+python -m pip install pipwin
+python -m pipwin install pyaudio
 ```
 
 ## Notes
@@ -122,6 +132,7 @@ python3 -m gesture_vision.main --no-splash
 - `pycaw` volume control is Windows-only and fails safely on unsupported systems.
 - Missing optional dependencies are handled gracefully to keep the app running.
 - Target FPS can be tuned in `gesture_vision/config/default_config.json`.
-- Wake-word listening uses `SpeechRecognition` and microphone support (install `PyAudio` on systems where your mic backend needs it).
-- Voice responses use `pyttsx3`.
+- Wake-word listening uses `SpeechRecognition` and microphone support. If `PyAudio` is missing or your mic backend is unavailable, Jarvis still speaks and the app keeps running; voice input simply becomes unavailable until the mic backend is fixed.
+- Voice responses use `pyttsx3` and Windows SAPI on supported machines.
+- Jarvis can now respond to greetings, switch modes by voice, and open common targets such as YouTube and Google.
 - Splash/fullscreen/assistant toggles are configurable in `gesture_vision/config/default_config.json`.

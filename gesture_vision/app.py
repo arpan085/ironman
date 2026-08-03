@@ -6,8 +6,11 @@ import ctypes
 import math
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import time
 from typing import Any, Callable
+import webbrowser
 
 import numpy as np
 
@@ -70,6 +73,10 @@ class GestureVisionApp:
         self.battery_percent: int | None = None
         self._overlay_until = 0.0
         self._overlay_text = ""
+        self.assistant_overlay_active = False
+        self._assistant_overlay_title = "JARVIS"
+        self._assistant_overlay_details = "Standby"
+        self._camera_stream_open = False
 
     def _build_mode_factories(self) -> list[Callable[[], Any]]:
         """Return mode constructors for normal startup and soft reset."""
@@ -138,10 +145,34 @@ class GestureVisionApp:
             self.assistant.play_startup_chime()
             self.assistant.start()
         self.running = True
+        self._camera_stream_open = True
         start = time.time()
         prev = time.perf_counter()
 
         while self.running:
+            if self.assistant_overlay_active:
+                if self._camera_stream_open:
+                    cap.release()
+                    self._camera_stream_open = False
+                frame = self._render_assistant_overlay()
+                if self.assistant_enabled:
+                    voice_command = self.assistant.poll_command()
+                    if voice_command is not None and not self._handle_voice_command(voice_command):
+                        break
+                key = self._read_key(cv2)
+                if not self._handle_key(key, frame):
+                    break
+                continue
+
+            if not self._camera_stream_open:
+                cap = cv2.VideoCapture(self.config.camera_index)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.window_width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.window_height)
+                if not cap.isOpened():
+                    cv2.destroyAllWindows()
+                    raise RuntimeError("Unable to open webcam")
+                self._camera_stream_open = True
+
             ok, frame = cap.read()
             if not ok:
                 continue
@@ -177,7 +208,7 @@ class GestureVisionApp:
                 if voice_command is not None and not self._handle_voice_command(voice_command):
                     break
 
-            key = cv2.waitKey(1) & 0xFF
+            key = self._read_key(cv2)
             if not self._handle_key(key, frame):
                 break
 
@@ -194,6 +225,13 @@ class GestureVisionApp:
         cv2.namedWindow(self.config.app_name, cv2.WINDOW_NORMAL)
         if self.config.fullscreen_enabled:
             cv2.setWindowProperty(self.config.app_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+    def _read_key(self, cv2_module: Any) -> int:
+        """Read keyboard input without losing special-key codes."""
+
+        if not hasattr(cv2_module, "waitKeyEx"):
+            return int(cv2_module.waitKey(1))
+        return int(cv2_module.waitKeyEx(1))
 
     def _draw_cinematic_layers(self, frame: Any, now: float) -> None:
         """Render reusable cinematic HUD effects."""
@@ -243,7 +281,7 @@ class GestureVisionApp:
             cv2.putText(frame, "PRESS ENTER / CLICK TO INITIALIZE", (x1 + 20, y1 + 44), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (230, 250, 255), 2)
             cv2.putText(frame, "ESC or Q to quit", (width // 2 - 78, y2 + 36), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (170, 200, 220), 1)
             cv2.imshow(self.config.app_name, frame)
-            key = cv2.waitKey(16) & 0xFF
+            key = self._read_key(cv2)
             if key in (27, ord("q"), ord("Q")):
                 cv2.setMouseCallback(self.config.app_name, lambda *_: None)
                 return False
@@ -270,9 +308,45 @@ class GestureVisionApp:
             color = (40, int(160 + 80 * alpha), 255)
             cv2.putText(frame, "ARC REACTOR ONLINE", (width // 2 - 190, height // 2), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
             cv2.imshow(self.config.app_name, frame)
-            key = cv2.waitKey(1) & 0xFF
+            key = self._read_key(cv2)
             if key in (27, ord("q"), ord("Q")):
                 return False
+
+    def _render_assistant_overlay(self) -> Any:
+        """Render a cinematic black-space overlay while Jarvis is active."""
+
+        import cv2  # type: ignore
+
+        height = max(360, self.config.window_height)
+        width = max(640, self.config.window_width)
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
+        frame[:] = HUD_BG
+        overlay = frame.copy()
+        self._draw_cinematic_layers(overlay, time.time())
+        cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+
+        star_count = 90
+        if not hasattr(self, "_assistant_stars") or len(self._assistant_stars) != star_count:
+            rng = np.random.RandomState(7)
+            self._assistant_stars = [(int(x), int(y)) for x, y in rng.randint(0, [width, height], size=(star_count, 2))]
+        for x, y in self._assistant_stars:
+            cv2.circle(frame, (x, y), 1 + (x % 2), (220, 235, 255), 1)
+
+        center = (width // 2, height // 2)
+        now = time.time()
+        pulse = 0.5 + 0.5 * math.sin(now * 2.8)
+        for ring in range(3):
+            radius = int(54 + ring * 24 + 6 * pulse)
+            color = (40 + ring * 20, 90 + ring * 25, 220)
+            cv2.circle(frame, center, radius, color, 2)
+        cv2.circle(frame, center, int(20 + 6 * pulse), (255, 210, 80), -1)
+        cv2.circle(frame, center, int(12 + 3 * pulse), (255, 255, 255), -1)
+
+        cv2.putText(frame, self._assistant_overlay_title, (width // 2 - 120, height // 2 + 120), cv2.FONT_HERSHEY_SIMPLEX, 1.0, HUD_ACCENT, 2)
+        cv2.putText(frame, self._assistant_overlay_details, (width // 2 - 160, height // 2 + 160), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 240, 255), 1)
+        cv2.putText(frame, "Press J to return", (width // 2 - 110, height - 46), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (180, 210, 235), 1)
+        cv2.imshow(self.config.app_name, frame)
+        return frame
 
     def _draw_help_overlay(self, frame: Any) -> None:
         """Render a compact two-column help overlay for all modes."""
@@ -369,8 +443,41 @@ class GestureVisionApp:
         if key in (ord("l"), ord("L")):
             self.show_mode_list = not self.show_mode_list
             return True
+        if key in (ord("j"), ord("J")):
+            if not self.assistant_enabled:
+                self._trigger_overlay("JARVIS DISABLED", duration_seconds=0.8)
+                return True
+            if self.assistant_overlay_active:
+                self.assistant_overlay_active = False
+                self._assistant_overlay_title = "JARVIS"
+                self._assistant_overlay_details = "Standby"
+                if self.assistant.listening:
+                    self.assistant.stop()
+                self._trigger_overlay("JARVIS OFFLINE", duration_seconds=0.8)
+                self._assistant_confirm("Jarvis offline.")
+            else:
+                self.assistant_overlay_active = True
+                self.assistant.start()
+                time.sleep(0.2)
+                self.assistant.speak_intro_sequence()
+                if self.assistant.listening and self.assistant.microphone_available:
+                    self._assistant_overlay_title = "JARVIS ONLINE"
+                    self._assistant_overlay_details = "Listening for wake word"
+                    self._trigger_overlay("JARVIS ONLINE", duration_seconds=0.8)
+                    self._assistant_confirm("Jarvis online.")
+                elif self.assistant.microphone_available:
+                    self._assistant_overlay_title = "JARVIS READY"
+                    self._assistant_overlay_details = "Speech output ready; voice input pending"
+                    self._trigger_overlay("JARVIS READY", duration_seconds=0.8)
+                    self._assistant_confirm("Jarvis ready.")
+                else:
+                    self._assistant_overlay_title = "JARVIS READY"
+                    self._assistant_overlay_details = "Speech output ready; voice input unavailable"
+                    self._trigger_overlay("JARVIS READY", duration_seconds=0.8)
+                    self._assistant_confirm("Jarvis ready.")
+            return True
 
-        typed = chr(key).lower() if 32 <= key <= 126 else ""
+        typed = self._shortcut_from_key(key)
         if typed:
             previous = self.mode_manager.active_mode.name
             switched = self.mode_manager.switch_by_shortcut(typed)
@@ -409,25 +516,17 @@ class GestureVisionApp:
         elif key == ord("\r") and hasattr(active, "play_round"):
             active.play_round(0)
 
-        function_map = {
-            190: "F1",
-            191: "F2",
-            192: "F3",
-            193: "F4",
-            194: "F5",
-            195: "F6",
-            196: "F7",
-            197: "F8",
-            198: "F9",
-            199: "F10",
-        }
-        if key in function_map:
-            previous = self.mode_manager.active_mode.name
-            switched = self.mode_manager.switch_by_shortcut(function_map[key])
-            if switched is not None and switched.name != previous:
-                self._assistant_confirm(f"Switching to {switched.name.replace('_', ' ')} mode.")
-
         return True
+
+    def _shortcut_from_key(self, key: int) -> str | None:
+        """Translate keyboard input into a mode shortcut string when possible."""
+
+        normalized = key & 0xFFFF
+        if 0x70 <= normalized <= 0x7B:
+            return f"F{normalized - 0x6F}"
+        if 32 <= key <= 126:
+            return chr(key).lower()
+        return None
 
     def _reset_active_mode(self) -> None:
         """Soft-reset active mode and local performance counters."""
@@ -471,7 +570,13 @@ class GestureVisionApp:
         """Route parsed wake-word commands."""
 
         if command.kind == "wake_ack":
-            self.assistant.speak("At your service, sir.")
+            self.assistant.speak("At your service, sir. I am ready for your command.")
+            return True
+        if command.kind == "greeting":
+            self.assistant.speak("Hello, sir. I am doing great. How may I assist you today?")
+            return True
+        if command.kind == "introduction":
+            self.assistant.speak("I am Jarvis, your immersive assistant. I can switch modes, open websites, report suit status, and control overlays.")
             return True
         if command.kind == "status_report":
             self._speak_status()
@@ -481,14 +586,134 @@ class GestureVisionApp:
             self._assistant_confirm("Opening tactical help overlay.")
             return True
         if command.kind == "switch_mode":
-            switched = self.mode_manager.switch(command.payload)
-            self._assistant_confirm(f"Switching to {switched.name.replace('_', ' ')} mode.")
+            try:
+                switched = self.mode_manager.switch(command.payload)
+            except KeyError:
+                self.assistant.speak("I could not find that mode.")
+                return True
+            self.assistant.speak(f"Switching to {switched.name.replace('_', ' ')} mode.")
+            return True
+        if command.kind == "open_target":
+            opened = self._open_target(command.payload)
+            if opened:
+                self.assistant.speak(f"Opening {command.payload} for you, sir.")
+            else:
+                self.assistant.speak("I could not open that target right now.")
+            return True
+        if command.kind == "close_target":
+            closed = self._close_target(command.payload)
+            if closed:
+                self.assistant.speak(f"Closing {command.payload} for you, sir.")
+            else:
+                self.assistant.speak("I could not close that target right now.")
+            return True
+        if command.kind == "system_action":
+            handled = self._handle_system_action(command.payload)
+            if handled:
+                self.assistant.speak(f"Executing {command.payload}.")
+            else:
+                self.assistant.speak("I could not perform that action right now.")
             return True
         if command.kind == "shutdown":
-            self._assistant_confirm("Powering down.")
+            self.assistant.speak("Powering down the suit systems.")
             return False
-        self.assistant.speak("Command not recognized.")
+        self.assistant.speak("Command not recognized. I can switch modes, open websites, report status, or show help.")
         return True
+
+    def _open_target(self, target: str) -> bool:
+        """Open a known browser target or desktop app from a spoken command."""
+
+        normalized = target.strip().lower()
+        url_map = {
+            "chrome": "https://www.google.com",
+            "google": "https://www.google.com",
+            "youtube": "https://www.youtube.com",
+            "github": "https://github.com",
+            "gmail": "https://mail.google.com",
+            "netflix": "https://www.netflix.com",
+            "spotify": "https://www.spotify.com",
+            "twitter": "https://x.com",
+            "facebook": "https://www.facebook.com",
+            "linkedin": "https://www.linkedin.com",
+            "reddit": "https://www.reddit.com",
+            "docs": "https://docs.python.org/3/",
+            "stack overflow": "https://stackoverflow.com",
+            "news": "https://news.google.com",
+        }
+        if normalized in url_map:
+            try:
+                return webbrowser.open(url_map[normalized])
+            except Exception:
+                return False
+
+        app_candidates = {
+            "calculator": ["calc.exe", "gnome-calculator", "kcalc"],
+            "notepad": ["notepad.exe", "gnome-text-editor"],
+            "paint": ["mspaint.exe", "gimp"],
+            "terminal": ["wt.exe", "cmd.exe", "gnome-terminal"],
+        }
+        if normalized in app_candidates:
+            for candidate in app_candidates[normalized]:
+                resolved = shutil.which(candidate)
+                if resolved:
+                    try:
+                        subprocess.Popen([resolved])
+                        return True
+                    except Exception:
+                        continue
+        return False
+
+    def _close_target(self, target: str) -> bool:
+        """Try to close a known app or browser target."""
+
+        normalized = target.strip().lower()
+        app_map = {
+            "chrome": ["chrome.exe", "google-chrome", "chromium", "chromium-browser"],
+            "google": ["chrome.exe", "google-chrome", "chromium", "chromium-browser"],
+            "youtube": ["chrome.exe", "google-chrome", "chromium", "chromium-browser"],
+            "calculator": ["calc.exe"],
+            "notepad": ["notepad.exe"],
+        }
+        if normalized in app_map:
+            for proc_name in app_map[normalized]:
+                try:
+                    if os.name == "nt":
+                        subprocess.run(["taskkill", "/F", "/IM", proc_name], check=False, capture_output=True)
+                    else:
+                        subprocess.run(["pkill", "-f", proc_name], check=False, capture_output=True)
+                    return True
+                except Exception:
+                    continue
+        return False
+
+    def _handle_system_action(self, action: str) -> bool:
+        """Perform supported in-app voice actions."""
+
+        active = self.mode_manager.active_mode
+        if action == "reset":
+            self._reset_active_mode()
+            return True
+        if action == "clear" and hasattr(active, "clear"):
+            active.clear()
+            return True
+        if action == "undo" and hasattr(active, "undo"):
+            active.undo()
+            return True
+        if action == "eraser" and hasattr(active, "eraser"):
+            active.eraser = not bool(active.eraser)
+            return True
+        if action == "snapshot":
+            if hasattr(active, "snapshot"):
+                active.snapshot()
+            self.recorder.screenshot(None)
+            return True
+        if action == "record":
+            self.recorder.start_video(self.config.window_width, self.config.window_height, self.config.target_fps)
+            return True
+        if action == "stop_recording":
+            self.recorder.stop_video()
+            return True
+        return False
 
     @property
     def _temperature_estimated(self) -> bool:
@@ -499,16 +724,26 @@ class GestureVisionApp:
     def _read_cpu_temperature_c(self) -> float:
         """Read CPU temp via psutil when available; otherwise return estimated demo value."""
 
+        fallback = 34.0 + min(46.0, self.cpu_load * 8.0 + self.fps_live * 0.08)
         try:
             import psutil  # type: ignore
         except ImportError:
             self._temperature_real = False
-            return 34.0 + min(46.0, self.cpu_load * 8.0 + self.fps_live * 0.08)
+            return fallback
 
-        temps = psutil.sensors_temperatures(fahrenheit=False)
+        sensors_temperatures = getattr(psutil, "sensors_temperatures", None)
+        if not callable(sensors_temperatures):
+            self._temperature_real = False
+            return fallback
+
+        try:
+            temps = sensors_temperatures(fahrenheit=False)
+        except (AttributeError, NotImplementedError):
+            self._temperature_real = False
+            return fallback
         if not temps:
             self._temperature_real = False
-            return 34.0 + min(46.0, self.cpu_load * 8.0 + self.fps_live * 0.08)
+            return fallback
 
         values: list[float] = []
         for entries in temps.values():
@@ -518,7 +753,7 @@ class GestureVisionApp:
                     values.append(float(current))
         if not values:
             self._temperature_real = False
-            return 34.0 + min(46.0, self.cpu_load * 8.0 + self.fps_live * 0.08)
+            return fallback
         self._temperature_real = True
         return sum(values) / len(values)
 
@@ -530,9 +765,11 @@ class GestureVisionApp:
         except ImportError:
             pass
         else:
-            battery = psutil.sensors_battery()
-            if battery is not None and battery.percent is not None:
-                return max(0, min(100, int(round(battery.percent))))
+            sensors_battery = getattr(psutil, "sensors_battery", None)
+            if callable(sensors_battery):
+                battery = sensors_battery()
+                if battery is not None and battery.percent is not None:
+                    return max(0, min(100, int(round(battery.percent))))
 
         if os.name != "nt":
             return None
