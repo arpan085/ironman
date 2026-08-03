@@ -15,11 +15,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from gesture_vision.config import load_config
+from gesture_vision.config import AppConfig, load_config
 from gesture_vision.core.base_mode import BaseMode
 from gesture_vision.core.mode_manager import ModeManager
 from gesture_vision.core.recorder import Recorder
 from gesture_vision.core.smoothing import PointFilter
+from gesture_vision.core.suit_ai import SuitAssistant
 from gesture_vision.core.system_controls import is_pinch
 from gesture_vision.modes.finger_keyboard import FingerKeyboardMode
 from gesture_vision.modes.gesture_calculator import GestureCalculatorMode
@@ -75,6 +76,26 @@ class ConfigTests(unittest.TestCase):
             path.write_text(json.dumps({"sidebar_enabled": "false"}), encoding="utf-8")
             cfg = load_config(path)
             self.assertFalse(cfg.sidebar_enabled)
+
+    def test_load_config_supports_jarvis_fields(self) -> None:
+        """New suit assistant config fields should load from JSON."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cfg.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "wake_word": "JARVIS",
+                        "startup_chime_enabled": "false",
+                        "command_confirmations": ["Certainly, sir", "Engaging now"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cfg = load_config(path)
+            self.assertEqual(cfg.wake_word, "jarvis")
+            self.assertFalse(cfg.startup_chime_enabled)
+            self.assertEqual(cfg.command_confirmations, ("Certainly, sir", "Engaging now"))
 
 
 class ManagerTests(unittest.TestCase):
@@ -142,6 +163,15 @@ class UtilityTests(unittest.TestCase):
         keyboard.process(frame, landmarks, {})
         keyboard.process(frame, landmarks, {})
         self.assertEqual(keyboard.typed, "Q")
+
+    def test_suit_assistant_parses_wake_word_commands(self) -> None:
+        """Wake-word parser should route known directives to command kinds."""
+
+        manager = ModeManager([_DummyMode("virtual_mouse", "7"), _DummyMode("performance_hud", "F10")])
+        assistant = SuitAssistant(AppConfig(), manager)
+        self.assertEqual(assistant.parse_command("jarvis"), assistant.parse_command("Jarvis"))
+        self.assertEqual(assistant.parse_command("jarvis status").kind, "status_report")
+        self.assertEqual(assistant.parse_command("jarvis virtual mouse").payload, "virtual_mouse")
 
 
 if __name__ == "__main__":

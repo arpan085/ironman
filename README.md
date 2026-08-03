@@ -11,6 +11,7 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 - Config-driven runtime settings including drawing colors, brush sizes, and help toggle behavior
 - Logging + screenshot/video capture utilities
 - Gesture recording hooks and keyboard shortcut controls
+- Jarvis-style wake word hooks, cinematic HUD shell effects, and suit-status voice telemetry
 
 ## Project Structure
 
@@ -30,6 +31,7 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 │   │   ├── mode_manager.py
 │   │   ├── recorder.py
 │   │   ├── smoothing.py
+│   │   ├── suit_ai.py
 │   │   └── system_controls.py
 │   ├── modes/
 │   │   ├── __init__.py
@@ -98,6 +100,7 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 - `S` screenshot
 - `V` start video recording
 - `Z` stop recording
+- `R` speak suit-status telemetry
 - `H` toggle help overlay
 - `Q` or `Esc` quit
 
@@ -115,3 +118,5 @@ python3 -m gesture_vision.main
 - `pycaw` volume control is Windows-only and fails safely on unsupported systems.
 - Missing optional dependencies are handled gracefully to keep the app running.
 - Target FPS can be tuned in `gesture_vision/config/default_config.json`.
+- Wake-word listening uses `SpeechRecognition` and microphone support (install `PyAudio` on systems where your mic backend needs it).
+- Voice responses use `pyttsx3`.
