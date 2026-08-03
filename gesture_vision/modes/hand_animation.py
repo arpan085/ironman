@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base_mode import BaseMode
-from .common import finger_xy
+from .common import draw_instruction, finger_xy
 
 
 class HandAnimationEffectsMode(BaseMode):
@@ -43,5 +43,5 @@ class HandAnimationEffectsMode(BaseMode):
             color = color_map[self.effect]
             for radius in range(8, 34, 6):
                 cv2.circle(frame, pt, radius, color, 1)
-        cv2.putText(frame, f"F6 Hand FX ({self.effect}) | X next", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        draw_instruction(frame, "F6", "hand_animation_effects", f"X next ({self.effect})")
         return frame

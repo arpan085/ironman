@@ -18,6 +18,11 @@ class BaseMode(ABC):
     def on_exit(self) -> None:
         """Run cleanup when this mode becomes inactive."""
 
+    def on_key(self, key: int) -> bool:
+        """Handle a key event before global shortcuts. Return True if consumed."""
+
+        return False
+
     @abstractmethod
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
         """Process a frame and return a rendered frame."""

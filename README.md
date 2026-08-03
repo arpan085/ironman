@@ -6,9 +6,9 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 
 - OpenCV + MediaPipe Hands hand tracking pipeline
 - 20 integrated modes (drawing, games, system controls, filters, and effects)
-- Dark-themed app shell + optional Tkinter sidebar
+- Dark-themed app shell + optional Tkinter sidebar with config-driven enablement
 - OOP architecture with separate modules
-- Config-driven runtime settings
+- Config-driven runtime settings including drawing colors, brush sizes, and help toggle behavior
 - Logging + screenshot/video capture utilities
 - Gesture recording hooks and keyboard shortcut controls
 
@@ -98,6 +98,7 @@ A modular **Python 3.12+** computer-vision project that bundles multiple gesture
 - `S` screenshot
 - `V` start video recording
 - `Z` stop recording
+- `H` toggle help overlay
 - `Q` or `Esc` quit
 
 ## Run

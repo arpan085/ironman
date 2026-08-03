@@ -8,6 +8,22 @@ from pathlib import Path
 from typing import Any
 
 
+def _coerce_bool(value: Any, default: bool) -> bool:
+    """Convert common truthy/falsy values to booleans."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off", ""}:
+            return False
+    return default
+
+
 @dataclass(slots=True)
 class AppConfig:
     """Strongly typed runtime configuration."""
@@ -23,6 +39,7 @@ class AppConfig:
     eraser_size: int = 40
     smooth_factor: float = 0.35
     record_output_dir: str = "captures"
+    sidebar_enabled: bool = False
 
 
 def _default_path() -> Path:
@@ -55,4 +72,5 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         eraser_size=max(1, int(raw.get("eraser_size", 40))),
         smooth_factor=float(raw.get("smooth_factor", 0.35)),
         record_output_dir=str(raw.get("record_output_dir", "captures")),
+        sidebar_enabled=_coerce_bool(raw.get("sidebar_enabled", False), False),
     )

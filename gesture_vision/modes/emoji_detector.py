@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from .common import clamp_point, draw_instruction
 
 
 class EmojiDetectorMode(BaseMode):
@@ -25,5 +26,8 @@ class EmojiDetectorMode(BaseMode):
 
         fingers = int(landmarks.get("fingers_up", 0))
         emoji = self.map.get(fingers, "🙂")
-        cv2.putText(frame, f"F9 Emoji Detector: {emoji}", (18, 36), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (200, 255, 255), 2)
+        h, w = frame.shape[:2]
+        pos = clamp_point((w // 2, 80), frame.shape)
+        cv2.putText(frame, emoji, pos, cv2.FONT_HERSHEY_SIMPLEX, 1.8, (200, 255, 255), 2)
+        draw_instruction(frame, "F9", "emoji_detector", "Gesture emoji")
         return frame

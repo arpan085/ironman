@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from .common import draw_instruction
 
 
 class FaceFilterMode(BaseMode):
@@ -55,5 +56,5 @@ class FaceFilterMode(BaseMode):
                 roi = frame[y : y + h, x : x + w]
                 frame[y : y + h, x : x + w] = cv2.bilateralFilter(roi, 7, 50, 50)
 
-        cv2.putText(frame, f"F3 Face Filter ({self.style}) | Y Toggle", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        draw_instruction(frame, "F3", "face_filter", f"Y toggle ({self.style})")
         return frame

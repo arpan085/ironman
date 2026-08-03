@@ -6,7 +6,7 @@ import random
 from typing import Any
 
 from ..core.base_mode import BaseMode
-from .common import finger_xy
+from .common import draw_instruction, finger_xy
 
 
 class GestureGamesMode(BaseMode):
@@ -44,6 +44,6 @@ class GestureGamesMode(BaseMode):
                 self.score += 1
                 self.target = [random.randint(60, w - 60), random.randint(80, h - 60)]
 
-        cv2.putText(frame, f"F7 Gesture Games ({self.mode}) | G next", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        draw_instruction(frame, "F7", "gesture_games", f"G next ({self.mode})")
         cv2.putText(frame, f"Score: {self.score}", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 255, 120), 2)
         return frame

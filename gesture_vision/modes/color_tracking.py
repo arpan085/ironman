@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from ..core.base_mode import BaseMode
+from .common import draw_instruction
 
 
 class ColorTrackingMode(BaseMode):
@@ -41,5 +42,5 @@ class ColorTrackingMode(BaseMode):
 
         for i in range(1, len(self.trail)):
             cv2.line(frame, self.trail[i - 1], self.trail[i], (255, 150, 0), 2)
-        cv2.putText(frame, "F1 Color Tracking", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        draw_instruction(frame, "F1", "color_tracking", "Track color blob")
         return frame

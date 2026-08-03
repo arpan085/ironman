@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from .common import draw_instruction, resolve_package_path
 
 
 class ImageViewerMode(BaseMode):
@@ -14,10 +15,10 @@ class ImageViewerMode(BaseMode):
     name = "image_viewer"
     shortcut = "F4"
 
-    def __init__(self, image_dir: str = "images") -> None:
+    def __init__(self, image_dir: str | Path | None = None) -> None:
         """Load images from configured folder."""
 
-        self.image_dir = Path(image_dir)
+        self.image_dir = Path(image_dir) if image_dir is not None else resolve_package_path("images")
         self.index = 0
         self.zoom = 1.0
         self.angle = 0.0
@@ -55,5 +56,5 @@ class ImageViewerMode(BaseMode):
                 y = max(0, (hh - rh) // 2)
                 canvas[y : y + min(hh - y, rh), x : x + min(ww - x, rw)] = rotated[: min(hh - y, rh), : min(ww - x, rw)]
 
-        cv2.putText(canvas, "F4 Image Viewer | [ ] swipe | -/+ zoom | R rotate", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        draw_instruction(canvas, "F4", "image_viewer", "[ ] swipe | -/+ zoom | R rotate")
         return canvas

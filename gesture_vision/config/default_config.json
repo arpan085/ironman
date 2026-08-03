@@ -9,5 +9,6 @@
   "draw_color": [0, 255, 255],
   "eraser_size": 40,
   "smooth_factor": 0.35,
-  "record_output_dir": "captures"
+  "record_output_dir": "captures",
+  "sidebar_enabled": false
 }
