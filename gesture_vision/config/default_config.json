@@ -10,5 +10,11 @@
   "eraser_size": 40,
   "smooth_factor": 0.35,
   "record_output_dir": "captures",
-  "sidebar_enabled": false
+  "sidebar_enabled": false,
+  "wake_word": "jarvis",
+  "startup_chime_enabled": true,
+  "shutdown_chime_enabled": true,
+  "cinematic_hud_enabled": true,
+  "suit_status_voice_enabled": true,
+  "command_confirmations": ["Certainly, sir.", "Engaging now."]
 }
