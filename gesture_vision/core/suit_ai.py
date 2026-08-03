@@ -101,10 +101,18 @@ class SuitAssistant:
         """Stop listener thread and release resources."""
 
         self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join(timeout=1.5)
+        thread = self._thread
+        if thread is not None:
+            thread.join(timeout=1.5)
+            if thread.is_alive():
+                LOGGER.warning("Assistant listener did not stop cleanly; keeping the thread handle until it exits.")
+                self._listening = True
+                return
         self._listening = False
         self._thread = None
+        self._voice_api = None
+        self._recognizer = None
+        self._microphone = None
 
     @property
     def listening(self) -> bool:

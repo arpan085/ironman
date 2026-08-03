@@ -134,8 +134,8 @@ class GestureVisionApp:
             raise RuntimeError("Unable to open webcam")
 
         self.launch_sidebar()
-        self.assistant.play_startup_chime()
         if self.assistant_enabled:
+            self.assistant.play_startup_chime()
             self.assistant.start()
         self.running = True
         start = time.time()
@@ -182,8 +182,8 @@ class GestureVisionApp:
                 break
 
         self.recorder.stop_video()
-        self.assistant.play_shutdown_chime()
         if self.assistant_enabled:
+            self.assistant.play_shutdown_chime()
             self.assistant.stop()
         cap.release()
         cv2.destroyAllWindows()

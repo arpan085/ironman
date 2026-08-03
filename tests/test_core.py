@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 import sys
 import types
@@ -191,6 +192,26 @@ class UtilityTests(unittest.TestCase):
             assistant.start()
         self.assertFalse(assistant.listening)
         self.assertIsNone(assistant.poll_command())
+
+    def test_suit_assistant_stop_clears_listener_state(self) -> None:
+        """Stopping the assistant should release listener state once the thread exits."""
+
+        manager = ModeManager([_DummyMode("virtual_mouse", "7")])
+        with patch.object(SuitAssistant, "_init_tts", lambda self: None):
+            assistant = SuitAssistant(AppConfig(), manager)
+        assistant._thread = threading.Thread(target=lambda: None)
+        assistant._thread.start()
+        assistant._thread.join(timeout=0.5)
+        assistant._listening = True
+        assistant._voice_api = object()
+        assistant._recognizer = object()
+        assistant._microphone = object()
+        assistant.stop()
+        self.assertFalse(assistant.listening)
+        self.assertIsNone(assistant._thread)
+        self.assertIsNone(assistant._voice_api)
+        self.assertIsNone(assistant._recognizer)
+        self.assertIsNone(assistant._microphone)
 
 
 class AppBehaviorTests(unittest.TestCase):
