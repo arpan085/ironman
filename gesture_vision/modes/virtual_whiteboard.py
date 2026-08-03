@@ -6,8 +6,9 @@ from typing import Any
 
 import numpy as np
 
+from ..config import AppConfig, load_config
 from ..core.base_mode import BaseMode
-from .common import finger_xy
+from .common import draw_instruction, finger_xy
 
 
 class VirtualWhiteboardMode(BaseMode):
@@ -16,12 +17,15 @@ class VirtualWhiteboardMode(BaseMode):
     name = "virtual_whiteboard"
     shortcut = "0"
 
-    def __init__(self) -> None:
+    def __init__(self, config: AppConfig | None = None) -> None:
         """Initialize whiteboard drawing state."""
 
+        self.config = config or load_config()
         self.board: np.ndarray | None = None
-        self.color = (0, 0, 0)
+        self.color = self.config.draw_color
+        self.brush_size = self.config.brush_size
         self.prev: tuple[int, int] | None = None
+        self.palette = [(0, 0, 0), (255, 0, 0), (0, 128, 255), (0, 180, 0)]
 
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
         """Draw marker strokes onto a bright white board."""
@@ -33,7 +37,20 @@ class VirtualWhiteboardMode(BaseMode):
 
         point = finger_xy(landmarks, frame.shape)
         if point is not None and self.prev is not None:
-            cv2.line(self.board, self.prev, point, self.color, 4, cv2.LINE_AA)
+            cv2.line(self.board, self.prev, point, self.color, max(2, self.brush_size), cv2.LINE_AA)
         self.prev = point
-        cv2.putText(self.board, "0 Whiteboard | T text placeholder | H shape mode", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (40, 40, 40), 2)
+        draw_instruction(self.board, "0", "virtual_whiteboard", "P palette | H shape mode")
         return self.board.copy()
+
+    def cycle_palette(self) -> None:
+        """Cycle through a palette of whiteboard colors."""
+
+        current = self.color
+        idx = (self.palette.index(current) + 1) % len(self.palette) if current in self.palette else 0
+        self.color = self.palette[idx]
+        self.config.draw_color = self.color
+
+    def toggle_style(self) -> None:
+        """Alias to cycle_palette for the shared shortcut handler."""
+
+        self.cycle_palette()

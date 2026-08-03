@@ -8,7 +8,7 @@ import numpy as np
 
 from ..core.base_mode import BaseMode
 from ..core.smoothing import PointFilter
-from .common import finger_xy
+from .common import draw_instruction, finger_xy
 
 
 class AirPainterMode(BaseMode):
@@ -51,7 +51,7 @@ class AirPainterMode(BaseMode):
         glow = cv2.GaussianBlur(self.canvas, (0, 0), 3)
         mixed = cv2.addWeighted(frame, 1.0, self.canvas, 0.7, 0)
         mixed = cv2.addWeighted(mixed, 1.0, glow, 0.8, 0)
-        cv2.putText(mixed, f"2 Air Painter ({self.style}) | P Style", (18, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        draw_instruction(mixed, "2", "air_painter", f"P style ({self.style})")
         return mixed
 
     def toggle_style(self) -> None:

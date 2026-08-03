@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from .common import draw_instruction
 
 
 class FingerCounterMode(BaseMode):
@@ -19,5 +20,6 @@ class FingerCounterMode(BaseMode):
         import cv2  # type: ignore
 
         count = int(landmarks.get("fingers_up", 0))
-        cv2.putText(frame, f"3 Finger Counter: {count}", (18, 38), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (60, 255, 120), 2)
+        draw_instruction(frame, "3", "finger_counter", f"Count {count}")
+        cv2.putText(frame, f"Detected: {count}", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (60, 255, 120), 2)
         return frame

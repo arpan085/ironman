@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from .config import AppConfig, load_config
+from .core.base_mode import BaseMode
 from .core.hand_tracker import HandTracker
 from .core.mode_manager import ModeManager
 from .core.recorder import Recorder
@@ -45,7 +46,7 @@ class GestureVisionApp:
         self.tracker = HandTracker(max_num_hands=2)
         self.mode_manager = ModeManager(
             [
-                VirtualDrawingCanvasMode(),
+                VirtualDrawingCanvasMode(self.config),
                 AirPainterMode(),
                 FingerCounterMode(),
                 RockPaperScissorsMode(),
@@ -54,7 +55,7 @@ class GestureVisionApp:
                 VirtualMouseMode(),
                 FingerKeyboardMode(),
                 GestureCalculatorMode(),
-                VirtualWhiteboardMode(),
+                VirtualWhiteboardMode(self.config),
                 ColorTrackingMode(),
                 ObjectMeasurementMode(),
                 FaceFilterMode(),
@@ -69,10 +70,13 @@ class GestureVisionApp:
         )
         self.recorder = Recorder(Path(self.config.record_output_dir))
         self.running = False
+        self.show_help = False
 
     def launch_sidebar(self) -> None:
         """Start optional sidebar with all shortcuts."""
 
+        if not self.config.sidebar_enabled:
+            return
         shortcuts = [(m.name, m.shortcut) for m in self.mode_manager.list_modes()]
         SidebarUI(self.config.app_name, shortcuts).start()
 
@@ -105,6 +109,8 @@ class GestureVisionApp:
                 "elapsed": time.time() - start,
             }
             frame = self.mode_manager.active_mode.process(frame, landmarks, context)
+            if self.show_help:
+                self._draw_help_overlay(frame)
             self._draw_shell(frame)
             self.recorder.write(frame)
             cv2.imshow(self.config.app_name, frame)
@@ -116,6 +122,30 @@ class GestureVisionApp:
         self.recorder.stop_video()
         cap.release()
         cv2.destroyAllWindows()
+
+    def _draw_help_overlay(self, frame: Any) -> None:
+        """Render a compact two-column help overlay for all modes."""
+
+        import cv2  # type: ignore
+
+        h, w = frame.shape[:2]
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (24, 50), (w - 24, h - 24), (12, 12, 12), -1)
+        cv2.addWeighted(overlay, 0.84, frame, 0.16, 0, frame)
+        cv2.putText(frame, "Help & Shortcuts", (44, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 229, 255), 2)
+        modes = self.mode_manager.list_modes()
+        half = max(1, len(modes) // 2)
+        left = modes[:half]
+        right = modes[half:]
+        col_gap = 24
+        column_width = (w - 2 * 44 - col_gap) // 2
+        for idx, mode in enumerate(left):
+            y = 110 + idx * 22
+            cv2.putText(frame, f"{mode.shortcut} {mode.name.replace('_', ' ').title()}", (44, y), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1)
+        for idx, mode in enumerate(right):
+            y = 110 + idx * 22
+            x = 44 + column_width + col_gap
+            cv2.putText(frame, f"{mode.shortcut} {mode.name.replace('_', ' ').title()}", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1)
 
     def _draw_shell(self, frame: Any) -> None:
         """Draw dark-themed shell chrome and mode title."""
@@ -132,11 +162,18 @@ class GestureVisionApp:
         if key in (27, ord("q")):
             return False
 
+        active = self.mode_manager.active_mode
+        if active.on_key(key):
+            return True
+
+        if key in (ord("h"), ord("H")):
+            self.show_help = not self.show_help
+            return True
+
         typed = chr(key).lower() if 32 <= key <= 126 else ""
         if typed:
             self.mode_manager.switch_by_shortcut(typed)
 
-        active = self.mode_manager.active_mode
         if key == ord("c") and hasattr(active, "clear"):
             active.clear()
         elif key == ord("u") and hasattr(active, "undo"):
@@ -161,9 +198,6 @@ class GestureVisionApp:
             self.recorder.stop_video()
         elif key == ord("\r") and hasattr(active, "play_round"):
             active.play_round(0)
-
-        if key == ord("f"):
-            return False
 
         function_map = {
             190: "F1",

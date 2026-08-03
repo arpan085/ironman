@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from .common import draw_instruction, resolve_package_path
 
 
 class MusicPlayerMode(BaseMode):
@@ -14,10 +15,10 @@ class MusicPlayerMode(BaseMode):
     name = "music_player"
     shortcut = "F5"
 
-    def __init__(self, music_dir: str = "music") -> None:
+    def __init__(self, music_dir: str | Path | None = None) -> None:
         """Initialize track list and playback state."""
 
-        self.music_dir = Path(music_dir)
+        self.music_dir = Path(music_dir) if music_dir is not None else resolve_package_path("music")
         self.tracks = sorted([p for p in self.music_dir.glob("*.*") if p.suffix.lower() in {".mp3", ".wav", ".ogg"}])
         self.idx = 0
         self.is_playing = False
@@ -62,18 +63,26 @@ class MusicPlayerMode(BaseMode):
             self.is_playing = True
 
     def next_track(self) -> None:
-        """Switch to next track and play."""
+        """Switch to next track and play directly."""
 
         if self.tracks:
             self.idx = (self.idx + 1) % len(self.tracks)
-            self.play_pause()
+            self._load_current()
+            import pygame  # type: ignore
+
+            pygame.mixer.music.play()
+            self.is_playing = True
 
     def prev_track(self) -> None:
-        """Switch to previous track and play."""
+        """Switch to previous track and play directly."""
 
         if self.tracks:
             self.idx = (self.idx - 1) % len(self.tracks)
-            self.play_pause()
+            self._load_current()
+            import pygame  # type: ignore
+
+            pygame.mixer.music.play()
+            self.is_playing = True
 
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
         """Render current playback info overlay."""
@@ -82,7 +91,7 @@ class MusicPlayerMode(BaseMode):
 
         name = self.tracks[self.idx].name if self.tracks else "No tracks"
         status = "Playing" if self.is_playing else "Paused"
-        cv2.putText(frame, "F5 Music Player", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        draw_instruction(frame, "F5", "music_player", "N next | B back | SPACE play/pause")
         cv2.putText(frame, f"Track: {name}", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 255, 220), 2)
-        cv2.putText(frame, f"State: {status} | N next | B back | SPACE play/pause", (18, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 220, 255), 2)
+        cv2.putText(frame, f"State: {status}", (18, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 220, 255), 2)
         return frame

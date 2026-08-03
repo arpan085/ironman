@@ -8,6 +8,8 @@ import tempfile
 import unittest
 import sys
 
+import numpy as np
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -16,8 +18,13 @@ if str(PROJECT_ROOT) not in sys.path:
 from gesture_vision.config import load_config
 from gesture_vision.core.base_mode import BaseMode
 from gesture_vision.core.mode_manager import ModeManager
+from gesture_vision.core.recorder import Recorder
 from gesture_vision.core.smoothing import PointFilter
+from gesture_vision.core.system_controls import is_pinch
+from gesture_vision.modes.finger_keyboard import FingerKeyboardMode
 from gesture_vision.modes.gesture_calculator import GestureCalculatorMode
+from gesture_vision.modes.music_player import MusicPlayerMode
+from gesture_vision.modes.common import resolve_package_path
 
 
 class _DummyMode(BaseMode):
@@ -60,6 +67,15 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(cfg.target_fps, 55)
             self.assertEqual(cfg.draw_color, (1, 2, 3))
 
+    def test_load_config_parses_string_bool(self) -> None:
+        """String booleans should be coerced correctly for config fields."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cfg.json"
+            path.write_text(json.dumps({"sidebar_enabled": "false"}), encoding="utf-8")
+            cfg = load_config(path)
+            self.assertFalse(cfg.sidebar_enabled)
+
 
 class ManagerTests(unittest.TestCase):
     """Validate mode manager switching behavior."""
@@ -95,6 +111,37 @@ class UtilityTests(unittest.TestCase):
         calc.expression = "__import__('os').system('echo bad')"
         calc.evaluate()
         self.assertEqual(calc.result, "Invalid")
+
+    def test_is_pinch_and_recorder_state(self) -> None:
+        """Pinch helper should detect close fingers while recorder reports unopened writer state."""
+
+        class _Writer:
+            def isOpened(self) -> bool:
+                return False
+
+        thumb = type("Point", (), {"x": 0.1, "y": 0.1})()
+        index = type("Point", (), {"x": 0.11, "y": 0.11})()
+        self.assertTrue(is_pinch(thumb, index, threshold=0.02))
+
+        recorder = Recorder(Path("captures"))
+        recorder.writer = _Writer()
+        self.assertFalse(recorder.is_open())
+
+    def test_music_player_uses_package_relative_default_dir(self) -> None:
+        """Music mode should resolve asset directories relative to the package root."""
+
+        player = MusicPlayerMode()
+        self.assertEqual(player.music_dir, resolve_package_path("music"))
+
+    def test_finger_keyboard_types_once_per_hover(self) -> None:
+        """The keyboard should only type once when hovering over a key cell."""
+
+        keyboard = FingerKeyboardMode()
+        frame = np.zeros((200, 400, 3), dtype=np.uint8)
+        landmarks = {"index_tip": type("Point", (), {"x": 0.05, "y": 0.5})()}
+        keyboard.process(frame, landmarks, {})
+        keyboard.process(frame, landmarks, {})
+        self.assertEqual(keyboard.typed, "Q")
 
 
 if __name__ == "__main__":
