@@ -41,6 +41,7 @@ from .modes.virtual_mouse import VirtualMouseMode
 from .modes.virtual_whiteboard import VirtualWhiteboardMode
 from .modes.volume_controller import VolumeControllerMode
 from .ui.tkinter_ui import SidebarUI
+from .ui.jarvis_hud import JarvisHUD
 
 
 HUD_ACCENT = (0, 229, 255)
@@ -76,6 +77,7 @@ class GestureVisionApp:
         self.assistant_overlay_active = False
         self._assistant_overlay_title = "JARVIS"
         self._assistant_overlay_details = "Standby"
+        self._jarvis_hud = JarvisHUD()
         self._camera_stream_open = False
 
     def _build_mode_factories(self) -> list[Callable[[], Any]]:
@@ -114,8 +116,20 @@ class GestureVisionApp:
 
         if not self.config.sidebar_enabled:
             return
-        shortcuts = [(m.name, m.shortcut) for m in self.mode_manager.list_modes()]
-        SidebarUI(self.config.app_name, shortcuts).start()
+        # Build triples (display name, keybind, callback) for the improved SidebarUI
+        shortcuts: list[tuple[str, str, callable | None]] = []
+        for m in self.mode_manager.list_modes():
+            name = m.name.replace("_", " ").title()
+            key = m.shortcut
+            def make_cb(k: str):
+                def cb() -> None:
+                    switched = self.mode_manager.switch_by_shortcut(k)
+                    if switched:
+                        self._assistant_confirm(f"Switching to {switched.name.replace('_', ' ')} mode.")
+                return cb
+            shortcuts.append((name, key, make_cb(key)))
+
+        SidebarUI(self.config.app_name, shortcuts, width=self.config.window_width, height=self.config.window_height, fullscreen=self.config.fullscreen_enabled).start()
 
     def run(self) -> None:
         """Start splash, then webcam loop, and process each frame with active mode."""
@@ -419,6 +433,13 @@ class GestureVisionApp:
             cv2.rectangle(frame, (w // 2 - 230, h // 2 - 40), (w // 2 + 230, h // 2 + 40), (18, 18, 22), -1)
             cv2.rectangle(frame, (w // 2 - 230, h // 2 - 40), (w // 2 + 230, h // 2 + 40), HUD_LINE, 2)
             cv2.putText(frame, self._overlay_text, (w // 2 - 190, h // 2 + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (240, 248, 255), 2)
+
+        # Draw Jarvis HUD overlay on top of all shell elements
+        try:
+            self._jarvis_hud.draw(frame, self.assistant)
+        except Exception:
+            # Never let overlay errors break the main loop
+            pass
 
     def _trigger_overlay(self, text: str, duration_seconds: float = 0.75) -> None:
         """Schedule a short status animation overlay."""
