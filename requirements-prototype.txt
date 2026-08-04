@@ -1,0 +1,9 @@
+# Prototype requirements for Futuristic AI Desktop Assistant
+PySide6>=6.6.0
+psutil
+pyttsx3
+SpeechRecognition
+pyaudio
+requests
+openai
+markdown2
