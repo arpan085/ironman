@@ -56,41 +56,77 @@ class SuitAssistant:
         self._microphone = None
         self._tts = None
         self._tts_lock = threading.Lock()
+        self._tts_queue: queue.Queue[str] = queue.Queue()
+        self._tts_thread: threading.Thread | None = None
+        self._tts_stop_event = threading.Event()
         self._rng = random.Random()
         self._microphone_available = False
         self._tts_engine_name = ""
+        # Start a dedicated TTS thread so the pyttsx3 engine is always used from one thread.
         self._init_tts()
 
     def _init_tts(self) -> None:
-        """Initialize optional TTS engine."""
+        """Start a dedicated TTS thread that initializes and owns the TTS engine.
 
-        try:
-            import pyttsx3  # type: ignore
-        except ImportError:
-            LOGGER.info("pyttsx3 not installed: voice responses disabled.")
-            return
+        This avoids calling pyttsx3.runAndWait() from multiple threads or from a
+        different thread than the engine was created on (which is a common
+        source of silent failures).
+        """
 
-        for driver_name in (None, "sapi5"):
+        def _tts_thread_main(stop_event: threading.Event, queue_obj: queue.Queue[str]) -> None:
             try:
-                engine = pyttsx3.init(driver_name) if driver_name else pyttsx3.init()
-                engine.setProperty("rate", 176)
-                self._tts = engine
-                self._tts_engine_name = "pyttsx3"
+                import pyttsx3  # type: ignore
+            except ImportError:
+                LOGGER.info("pyttsx3 not installed: voice responses disabled.")
                 return
-            except Exception as exc:  # noqa: BLE001
-                LOGGER.debug("TTS driver failed: %s", exc)
 
-        try:
-            import win32com.client as wincl  # type: ignore
-        except ImportError:
-            LOGGER.warning("No supported speech engine available; voice responses disabled.")
-            return
-        try:
-            self._tts = wincl.Dispatch("SAPI.SpVoice")
-            self._tts_engine_name = "sapi"
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.warning("Failed to initialize Windows SAPI voice: %s", exc)
-            self._tts = None
+            engine = None
+            engine_name = ""
+
+            # Try pyttsx3 init first (preferred)
+            for driver_name in (None, "sapi5"):
+                try:
+                    engine = pyttsx3.init(driver_name) if driver_name else pyttsx3.init()
+                    engine.setProperty("rate", 176)
+                    engine_name = "pyttsx3"
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.debug("TTS driver failed in tts thread: %s", exc)
+
+            # If pyttsx3 didn't work, try Windows SAPI via comtypes/win32com
+            if engine is None:
+                try:
+                    import win32com.client as wincl  # type: ignore
+                    engine = wincl.Dispatch("SAPI.SpVoice")
+                    engine_name = "sapi"
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.warning("No supported speech engine available in tts thread; voice disabled: %s", exc)
+                    return
+
+            # Publish engine handles back to the outer object so other code may inspect state.
+            self._tts = engine
+            self._tts_engine_name = engine_name
+
+            # Drain queue until stop_event is set
+            while not stop_event.is_set():
+                try:
+                    text = queue_obj.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                try:
+                    if engine_name == "sapi":
+                        engine.Speak(text)
+                    else:
+                        engine.say(text)
+                        engine.runAndWait()
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.warning("TTS playback in thread failed: %s", exc)
+
+        # Start thread
+        if self._tts_thread is None or not (self._tts_thread.is_alive()):
+            self._tts_stop_event.clear()
+            self._tts_thread = threading.Thread(target=_tts_thread_main, args=(self._tts_stop_event, self._tts_queue), name="suit-assistant-tts", daemon=True)
+            self._tts_thread.start()
 
     def start(self) -> None:
         """Start wake-word listener if speech dependencies are present."""
@@ -119,7 +155,7 @@ class SuitAssistant:
         self._listening = True
 
     def stop(self) -> None:
-        """Stop listener thread and release resources."""
+        """Stop listener thread and release resources, and stop the TTS thread."""
 
         self._stop_event.set()
         thread = self._thread
@@ -128,12 +164,31 @@ class SuitAssistant:
             if thread.is_alive():
                 LOGGER.warning("Assistant listener did not stop cleanly; keeping the thread handle until it exits.")
                 self._listening = True
-                return
-        self._listening = False
+            else:
+                self._listening = False
+        else:
+            self._listening = False
         self._thread = None
         self._voice_api = None
         self._recognizer = None
         self._microphone = None
+
+        # Stop TTS thread
+        try:
+            self._tts_stop_event.set()
+            if self._tts_thread is not None:
+                self._tts_thread.join(timeout=1.5)
+        except Exception:
+            pass
+        finally:
+            self._tts_thread = None
+            self._tts = None
+            # empty the queue
+            try:
+                while not self._tts_queue.empty():
+                    self._tts_queue.get_nowait()
+            except Exception:
+                pass
 
     @property
     def listening(self) -> bool:
@@ -301,21 +356,18 @@ class SuitAssistant:
         return ""
 
     def speak(self, text: str) -> None:
-        """Speak a short line if TTS is available."""
+        """Enqueue a phrase for the TTS thread to speak.
 
-        if self._tts is None:
+        If the TTS thread/engine is not available, this is a no-op (but logged).
+        """
+
+        if self._tts_thread is None or not self._tts_thread.is_alive():
+            LOGGER.debug("TTS thread unavailable; cannot speak: %s", text)
             return
-        with self._tts_lock:
-            try:
-                if self._tts_engine_name == "sapi":
-                    self._tts.Speak(text)
-                else:
-                    self._tts.say(text)
-                    self._tts.runAndWait()
-            except RuntimeError as exc:
-                LOGGER.warning("TTS playback failed: %s", exc)
-            except AttributeError as exc:
-                LOGGER.warning("TTS engine interface mismatch: %s", exc)
+        try:
+            self._tts_queue.put_nowait(text)
+        except Exception as exc:  # pragma: no cover - defensive
+            LOGGER.warning("Failed to enqueue TTS text: %s", exc)
 
     def speak_intro_sequence(self) -> None:
         """Speak a richer startup sequence for Jarvis."""

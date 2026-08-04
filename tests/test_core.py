@@ -12,6 +12,8 @@ import types
 from unittest.mock import patch
 
 import numpy as np
+import time
+from gesture_vision.core.suit_ai import VoiceCommand
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -194,6 +196,61 @@ class UtilityTests(unittest.TestCase):
             assistant.start()
         self.assertFalse(assistant.listening)
         self.assertIsNone(assistant.poll_command())
+
+    def test_tts_thread_and_queue_calls_engine(self) -> None:
+        """TTS thread should initialize the engine and call engine.say/runAndWait for queued phrases."""
+
+        manager = ModeManager([_DummyMode("virtual_mouse", "7")])
+        calls: list[tuple[str, str]] = []
+
+        class MockEngine:
+            def say(self, text: str) -> None:  # type: ignore[override]
+                calls.append(("say", text))
+
+            def runAndWait(self) -> None:  # type: ignore[override]
+                calls.append(("run", ""))
+
+        # Patch pyttsx3.init to return our mock engine and start SuitAssistant
+        with patch("pyttsx3.init", return_value=MockEngine()):
+            assistant = SuitAssistant(AppConfig(), manager)
+            # ensure TTS thread had time to initialize
+            time.sleep(0.15)
+            assistant.speak("Test one")
+            assistant.speak("Test two")
+            # give tts thread time to process
+            time.sleep(0.25)
+            # Stop assistant to join threads
+            assistant.stop()
+
+        # Expect that both phrases were sent to the engine
+        said_texts = [c for c in calls if c[0] == "say"]
+        self.assertGreaterEqual(len(said_texts), 2)
+        self.assertIn(("say", "Test one"), said_texts)
+        self.assertIn(("say", "Test two"), said_texts)
+
+    def test_app_handles_voice_command_and_speaks(self) -> None:
+        """App should call assistant.speak() after performing an open/close/unknown command."""
+
+        cfg = AppConfig(show_splash_screen=False, assistant_enabled=True)
+        app = GestureVisionApp(config=cfg)
+        # Replace speak with a spy
+        called: list[str] = []
+        app.assistant.speak = lambda text: called.append(text)  # type: ignore
+
+        # open target
+        open_cmd = VoiceCommand(kind="open_target", payload="youtube")
+        app._handle_voice_command(open_cmd)
+        self.assertTrue(any("Opening" in t for t in called))
+
+        called.clear()
+        close_cmd = VoiceCommand(kind="close_target", payload="youtube")
+        app._handle_voice_command(close_cmd)
+        self.assertTrue(any("Closing" in t for t in called))
+
+        called.clear()
+        unknown = VoiceCommand(kind="unknown", payload="gibberish")
+        app._handle_voice_command(unknown)
+        self.assertTrue(any("not recognized" in t.lower() for t in called))
 
     def test_suit_assistant_stop_clears_listener_state(self) -> None:
         """Stopping the assistant should release listener state once the thread exits."""
