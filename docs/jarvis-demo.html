@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jarvis Demo — Animated HUD (SVG + GSAP)</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg: #051017;
+      --panel: #07121a;
+      --jarvis-base: #4ee1ff; /* accent */
+      --jarvis-dim: rgba(78,225,255,0.18);
+      --jarvis-strong: rgba(78,225,255,0.36);
+      --jarvis-size: 520px; /* change to resize */
+      --core-shape: triangle; /* triangle | circle | hex */
+      --sweep-speed: 7s;
+    }
+
+    html,body{height:100%;}
+    body{
+      margin:0; font-family:Inter, system-ui, sans-serif; background:linear-gradient(180deg,var(--bg),#021018 60%); color:#dfeff6; display:flex; gap:28px; padding:32px; align-items:flex-start;
+    }
+
+    .demo-shell{ display:flex; gap:28px; align-items:flex-start; }
+
+    /* Jarvis stage */
+    .jarvis-stage{ width:var(--jarvis-size); height:var(--jarvis-size); position:relative; background:transparent; }
+    .jarvis-stage .hud{ width:100%; height:100%; }
+    svg{ display:block; width:100%; height:100%; }
+
+    .ring{ fill:none; stroke:var(--jarvis-dim); stroke-width:1.25; }
+    .ring-strong{ stroke:var(--jarvis-strong); }
+    .dash{ fill:none; stroke:var(--jarvis-dim); stroke-width:1; stroke-dasharray:3 7; }
+
+    .sweep-line{ stroke:var(--jarvis-base); stroke-width:2.6; stroke-linecap:round; filter:blur(0.6px); }
+
+    .ticks line{ stroke:var(--jarvis-dim); stroke-width:1; }
+
+    .core-wrap{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }
+    .core-glow{ width:60%; aspect-ratio:1/1; transform-origin:center; }
+
+    .core-shape{ fill: url(#coreGrad); filter: drop-shadow(0 0 18px rgba(78,225,255,0.18)); }
+
+    .hud-label{ position:absolute; left:50%; transform:translateX(-50%); bottom:6%; font-family:JetBrains Mono, monospace; letter-spacing:.14em; color:var(--jarvis-base); font-size:12px; text-transform:uppercase; }
+
+    /* Controls */
+    .controls{ width:360px; background:linear-gradient(180deg,#071823, #041018); padding:18px; border-radius:8px; border:1px solid rgba(255,255,255,0.03); box-shadow:0 8px 30px rgba(2,8,12,0.6); }
+    .controls h2{ margin:0 0 12px 0; font-size:16px; }
+    .control{ display:flex; gap:10px; align-items:center; margin-bottom:12px; }
+    .control label{ width:110px; font-family:JetBrains Mono, monospace; font-size:12px; color:#9fcbdc; }
+    .control input[type="range"]{ flex:1; }
+    .control input[type="color"]{ width:48px; height:28px; border-radius:6px; border:0; padding:0; }
+    .control select{ flex:1; padding:7px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:inherit; }
+    .btn-row{ display:flex; gap:8px; margin-top:8px; }
+    .btn{ padding:8px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:inherit; cursor:pointer; }
+
+    /* Responsiveness */
+    @media (max-width:980px){ body{flex-direction:column; align-items:center;} .controls{ width:100%; max-width:680px; } }
+  </style>
+</head>
+<body>
+  <div class="demo-shell">
+    <div class="jarvis-stage" id="jarvisStage">
+      <svg class="hud" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <radialGradient id="coreGrad" cx="35%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="#bff4ff" stop-opacity="1"/>
+            <stop offset="40%" stop-color="var(--jarvis-base)" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#08333d" stop-opacity="1"/>
+          </radialGradient>
+          <linearGradient id="sweep" x1="0" x2="1">
+            <stop offset="0%" stop-color="var(--jarvis-base)" stop-opacity="0" />
+            <stop offset="100%" stop-color="var(--jarvis-base)" stop-opacity="1" />
+          </linearGradient>
+        </defs>
+
+        <!-- Outer decorative rings -->
+        <circle class="ring" cx="300" cy="300" r="270" />
+        <circle class="ring dash" cx="300" cy="300" r="220" />
+        <circle class="ring ring-strong" cx="300" cy="300" r="160" />
+
+        <!-- ticks group (populated by JS) -->
+        <g class="ticks" transform="translate(300,300)" id="ticks"></g>
+
+        <!-- rotating sweep (single line, we'll rotate g) -->
+        <g id="sweepGroup" transform="translate(300,300)">
+          <line class="sweep-line" x1="0" y1="0" x2="0" y2="-240" stroke="url(#sweep)" />
+        </g>
+
+        <!-- inner rings animated by JS -->
+        <g id="innerRings" transform="translate(300,300)">
+          <circle class="ring" cx="0" cy="0" r="86" />
+          <circle class="ring dash" cx="0" cy="0" r="108" />
+        </g>
+
+      </svg>
+
+      <div class="core-wrap" style="width:34%;">
+        <svg viewBox="0 0 200 200" class="core-glow">
+          <defs>
+            <radialGradient id="coreGlow" cx="50%" cy="45%" r="60%">
+              <stop offset="0%" stop-color="rgba(78,225,255,0.95)" stop-opacity="0.95"/>
+              <stop offset="60%" stop-color="rgba(78,225,255,0.24)" stop-opacity="0.9"/>
+              <stop offset="100%" stop-color="rgba(4,24,28,0.0)" stop-opacity="0.0"/>
+            </radialGradient>
+          </defs>
+
+          <!-- circle core (default hidden when shape=triangle) -->
+          <circle id="coreCircle" class="core-shape" cx="100" cy="100" r="50" fill="url(#coreGrad)" />
+
+          <!-- triangle core -->
+          <polygon id="coreTriangle" class="core-shape" points="100,40 155,140 45,140" fill="url(#coreGrad)" />
+
+          <!-- hex core -->
+          <polygon id="coreHex" class="core-shape" points="100,45 140,75 140,125 100,155 60,125 60,75" fill="url(#coreGrad)" />
+
+          <!-- subtle glow overlay -->
+          <circle cx="100" cy="100" r="74" fill="url(#coreGlow)" style="mix-blend-mode:screen;" />
+        </svg>
+      </div>
+
+      <div class="hud-label">JARVIS OS — Active</div>
+    </div>
+
+    <aside class="controls" aria-label="Jarvis controls">
+      <h2>Jarvis Controls</h2>
+
+      <div class="control"><label>Accent</label><input type="color" id="accent" value="#4ee1ff"></div>
+      <div class="control"><label>Size</label><input id="sizeRange" type="range" min="220" max="900" value="520"></div>
+      <div class="control"><label>Shape</label>
+        <select id="shapeSel"><option value="triangle">Triangle (default)</option><option value="circle">Circle</option><option value="hex">Hexagon</option></select>
+      </div>
+      <div class="control"><label>Speed</label><input id="speedRange" type="range" min="2" max="20" value="7"></div>
+
+      <div class="control"><label>Ticks</label>
+        <select id="tickDensity"><option value="24">24</option><option value="36">36</option><option value="48">48</option></select>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="pauseBtn">Pause</button>
+        <button class="btn" id="resetBtn">Reset</button>
+        <button class="btn" id="exportCssBtn">Copy CSS</button>
+      </div>
+
+      <p style="margin-top:12px; font-size:13px; color:#91c6d8;">Tip: change the <code>--jarvis-size</code> and color variables in :root to reuse the HUD elsewhere.</p>
+    </aside>
+  </div>
+
+  <!-- GSAP (animation) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script>
+    // Basic hookup and animation timeline using GSAP
+    const root = document.documentElement;
+    const accent = document.getElementById('accent');
+    const sizeRange = document.getElementById('sizeRange');
+    const shapeSel = document.getElementById('shapeSel');
+    const speedRange = document.getElementById('speedRange');
+    const tickDensity = document.getElementById('tickDensity');
+
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const exportCssBtn = document.getElementById('exportCssBtn');
+
+    // Elements for animation
+    const sweepGroup = document.getElementById('sweepGroup');
+    const innerRings = document.getElementById('innerRings');
+    const ticksGroup = document.getElementById('ticks');
+    const coreCircle = document.getElementById('coreCircle');
+    const coreTriangle = document.getElementById('coreTriangle');
+    const coreHex = document.getElementById('coreHex');
+
+    // Create ticks function
+    function drawTicks(count){
+      ticksGroup.innerHTML = '';
+      for(let i=0;i<count;i++){
+        const angle = (i/count) * (Math.PI*2);
+        const inner = 220; const outer = 260;
+        const x1 = Math.round(Math.cos(angle)*inner);
+        const y1 = Math.round(Math.sin(angle)*inner);
+        const x2 = Math.round(Math.cos(angle)*outer);
+        const y2 = Math.round(Math.sin(angle)*outer);
+        const ln = document.createElementNS('http://www.w3.org/2000/svg','line');
+        ln.setAttribute('x1',x1); ln.setAttribute('y1',y1); ln.setAttribute('x2',x2); ln.setAttribute('y2',y2);
+        ticksGroup.appendChild(ln);
+      }
+    }
+
+    // initial tick draw
+    drawTicks(Number(tickDensity.value));
+
+    // GSAP timelines
+    const master = gsap.timeline({ repeat: -1 });
+    master.to('#sweepGroup', { rotation: 360, transformOrigin: '50% 50%', duration: Number(speedRange.value), ease: 'none' });
+    const pulse = gsap.timeline({ repeat:-1, yoyo:true });
+    pulse.to(innerRings.querySelectorAll('circle'), { attr:{ r: '+=6' }, duration:1.4, ease:'sine.inOut' }, 0);
+    pulse.to(innerRings.querySelectorAll('circle'), { opacity:0.6, duration:1.4, ease:'sine.inOut' }, 0);
+
+    // subtle spin of inner rings
+    gsap.to(innerRings, { rotation: -28, transformOrigin: '50% 50%', duration:18, repeat:-1, ease:'none' });
+
+    // core breathing
+    gsap.to('.core-glow', { scale:1.04, duration:1.6, repeat:-1, yoyo:true, ease:'sine.inOut' });
+
+    // Hook up controls
+    accent.addEventListener('input', e => { root.style.setProperty('--jarvis-base', e.target.value); root.style.setProperty('--jarvis-strong', hexToRgba(e.target.value,0.36)); root.style.setProperty('--jarvis-dim', hexToRgba(e.target.value,0.18)); });
+    sizeRange.addEventListener('input', e => { root.style.setProperty('--jarvis-size', e.target.value + 'px'); });
+    speedRange.addEventListener('input', e => {
+      const v = Number(e.target.value);
+      // replace timeline with new duration
+      master.duration(v);
+      // simpler way: kill and recreate
+      gsap.killTweensOf('#sweepGroup');
+      gsap.to('#sweepGroup', { rotation: 360, transformOrigin: '50% 50%', duration: v, ease: 'none', repeat:-1 });
+    });
+
+    tickDensity.addEventListener('change', e => drawTicks(Number(e.target.value)));
+
+    shapeSel.addEventListener('change', e => {
+      const s = e.target.value;
+      coreCircle.style.display = 'none'; coreTriangle.style.display='none'; coreHex.style.display='none';
+      if(s==='circle') coreCircle.style.display='block';
+      if(s==='triangle') coreTriangle.style.display='block';
+      if(s==='hex') coreHex.style.display='block';
+    });
+
+    // default
+    shapeSel.value = 'triangle'; shapeSel.dispatchEvent(new Event('change'));
+
+    // Pause/Resume
+    let paused = false;
+    pauseBtn.addEventListener('click', ()=>{
+      paused = !paused; pauseBtn.textContent = paused? 'Resume':'Pause';
+      if(paused){ gsap.globalTimeline.pause(); } else { gsap.globalTimeline.resume(); }
+    });
+
+    resetBtn.addEventListener('click', ()=>{
+      accent.value = '#4ee1ff'; sizeRange.value = 520; speedRange.value = 7; tickDensity.value = 24; shapeSel.value='triangle';
+      accent.dispatchEvent(new Event('input')); sizeRange.dispatchEvent(new Event('input')); speedRange.dispatchEvent(new Event('input')); tickDensity.dispatchEvent(new Event('change')); shapeSel.dispatchEvent(new Event('change'));
+    });
+
+    exportCssBtn.addEventListener('click', ()=>{
+      const css = `:root{\n  --jarvis-size: ${sizeRange.value}px;\n  --jarvis-base: ${accent.value};\n  --jarvis-strong: ${hexToRgba(accent.value,0.36)};\n  --jarvis-dim: ${hexToRgba(accent.value,0.18)};\n}`;
+      navigator.clipboard.writeText(css).then(()=>{ exportCssBtn.textContent='Copied'; setTimeout(()=>exportCssBtn.textContent='Copy CSS',900); });
+    });
+
+    // small helper
+    function hexToRgba(hex, a){
+      hex = hex.replace('#',''); if(hex.length===3) hex = hex.split('').map(h=>h+h).join('');
+      const r = parseInt(hex.substring(0,2),16); const g = parseInt(hex.substring(2,4),16); const b = parseInt(hex.substring(4,6),16);
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+
+    // Initialize accent color vars
+    accent.dispatchEvent(new Event('input'));
+
+    // Accessibility: stop animations if prefers-reduced-motion
+    if(window.matchMedia('(prefers-reduced-motion:reduce)').matches){ gsap.globalTimeline.pause(); }
+
+    // Make the whole stage draggable for fun (desktop only)
+    // Simple pointermove translator
+    (function draggableStage(){
+      const stage = document.getElementById('jarvisStage'); let down=false, sx=0, sy=0, tx=0, ty=0;
+      stage.addEventListener('pointerdown', e=>{ down=true; sx=e.clientX; sy=e.clientY; stage.setPointerCapture(e.pointerId); });
+      window.addEventListener('pointermove', e=>{ if(!down) return; tx += (e.clientX - sx)*0.02; ty += (e.clientY - sy)*0.02; sx = e.clientX; sy = e.clientY; stage.style.transform = `perspective(900px) translateZ(0px) rotateX(${ty}deg) rotateY(${tx}deg)`; });
+      window.addEventListener('pointerup', e=>{ down=false; stage.releasePointerCapture && stage.releasePointerCapture(e.pointerId); gsap.to(stage, { transform:'none', duration:0.7, ease:'power3.out' }); tx=0; ty=0; });
+    })();
+
+  </script>
+</body>
+</html>

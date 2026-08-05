@@ -136,3 +136,4 @@ python -m pipwin install pyaudio
 - Voice responses use `pyttsx3` and Windows SAPI on supported machines.
 - Jarvis can now respond to greetings, switch modes by voice, and open common targets such as YouTube and Google.
 - Splash/fullscreen/assistant toggles are configurable in `gesture_vision/config/default_config.json`.
+hey there! I am Arpan. I am 17 at the moment. I am currently living in kathmandu nepal. i am not from rich background. i am currently studing in grade 12 computer science and i am good at study as well . i have college from 6 am to 2:30 pm. and i wanna earn so badly , like so badly i am so in need of money , i need a job but i don't have any skills. but i can promise i can learn any skills so fastly. and can do things perfectly. but i don't know the way how can i do this or anything
