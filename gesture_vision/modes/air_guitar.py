@@ -55,7 +55,9 @@ class AirGuitarMode(BaseMode):
         self._cooldown = 14
         self._last_strum = CHORDS[n][0]
         if self._audio_ready and n in self.sounds:
-            self.sounds[n].play()
+            from ..core.soundgen import play_sound
+
+            play_sound(self.sounds[n])
 
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
         """Detect the chord hand, watch for strums, and render the fretboard."""

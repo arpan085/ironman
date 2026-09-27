@@ -10,3 +10,6 @@ images/*
 !images/.gitkeep
 music/*
 !music/.gitkeep
+.env
+.env.*
+!.env.example

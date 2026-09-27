@@ -52,7 +52,9 @@ class AirPianoMode(BaseMode):
         """Play a note and start its cooldown."""
 
         if self._audio_ready and name in self.sounds:
-            self.sounds[name].play()
+            from ..core.soundgen import play_sound
+
+            play_sound(self.sounds[name])
         self._cooldowns[name] = 10
 
     def on_key(self, key: int, char: str) -> bool:

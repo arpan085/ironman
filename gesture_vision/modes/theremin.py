@@ -75,7 +75,10 @@ class ThereminMode(BaseMode):
             max_d = (w * w + h * h) ** 0.5 * 0.45
             volume = max(0.05, min(1.0, dist / max_d))
         if self._audio_ready and self._channel is not None:
-            self._channel.set_volume(volume)
+            from ..core.soundgen import get_master_volume, is_muted
+
+            eff_vol = 0.0 if is_muted() else volume * get_master_volume()
+            self._channel.set_volume(eff_vol)
 
         bar_w = int(w * 0.4)
         x0 = w // 2 - bar_w // 2
@@ -89,3 +92,10 @@ class ThereminMode(BaseMode):
         if not self._audio_ready:
             cv2.putText(frame, "Audio device unavailable - visual only", (18, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 140, 255), 2)
         return frame
+
+    def on_exit(self) -> None:
+        """Stop sound channel on mode switch."""
+
+        if self._channel is not None:
+            self._channel.stop()
+        self._current_step = None

@@ -60,7 +60,9 @@ class AirDrumsMode(BaseMode):
         """Play a drum sound and mark the pad as flashing."""
 
         if self._audio_ready and kind in self.sounds:
-            self.sounds[kind].play()
+            from ..core.soundgen import play_sound
+
+            play_sound(self.sounds[kind])
         self._flash = kind
 
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:

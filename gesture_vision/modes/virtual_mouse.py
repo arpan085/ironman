@@ -61,5 +61,5 @@ class VirtualMouseMode(BaseMode):
                 self._cooldown = 8
 
         self._last_fingers = fingers
-        cv2.putText(frame, "7 Virtual Mouse | 2 left 3 right 4 double 5 scroll", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(frame, "7 Virtual Mouse | 2 left 3 right 4 double 5 scroll", (18, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 229, 255), 2, cv2.LINE_AA)
         return frame

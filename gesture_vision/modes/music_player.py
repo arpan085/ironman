@@ -17,8 +17,13 @@ class MusicPlayerMode(BaseMode):
     def __init__(self, music_dir: str = "music") -> None:
         """Initialize track list and playback state."""
 
-        self.music_dir = Path(music_dir)
-        self.tracks = sorted([p for p in self.music_dir.glob("*.*") if p.suffix.lower() in {".mp3", ".wav", ".ogg"}])
+        p = Path(music_dir)
+        if not p.is_absolute() and not p.exists():
+            root_candidate = Path(__file__).resolve().parents[2] / music_dir
+            if root_candidate.exists():
+                p = root_candidate
+        self.music_dir = p
+        self.tracks = sorted([t for t in self.music_dir.glob("*.*") if t.suffix.lower() in {".mp3", ".wav", ".ogg"}]) if self.music_dir.exists() else []
         self.idx = 0
         self.is_playing = False
         self.volume = 0.5
@@ -46,6 +51,17 @@ class MusicPlayerMode(BaseMode):
         pygame.mixer.music.load(str(self.tracks[self.idx]))
         pygame.mixer.music.set_volume(self.volume)
 
+    def _play_current(self) -> None:
+        """Load the current track and start playback."""
+
+        if not self._ready or not self.tracks:
+            return
+        import pygame  # type: ignore
+
+        self._load_current()
+        pygame.mixer.music.play()
+        self.is_playing = True
+
     def play_pause(self) -> None:
         """Toggle playback state."""
 
@@ -57,23 +73,21 @@ class MusicPlayerMode(BaseMode):
             pygame.mixer.music.pause()
             self.is_playing = False
         else:
-            self._load_current()
-            pygame.mixer.music.play()
-            self.is_playing = True
+            self._play_current()
 
     def next_track(self) -> None:
-        """Switch to next track and play."""
+        """Switch to the next track and start playing it."""
 
         if self.tracks:
             self.idx = (self.idx + 1) % len(self.tracks)
-            self.play_pause()
+            self._play_current()
 
     def prev_track(self) -> None:
-        """Switch to previous track and play."""
+        """Switch to the previous track and start playing it."""
 
         if self.tracks:
             self.idx = (self.idx - 1) % len(self.tracks)
-            self.play_pause()
+            self._play_current()
 
     def on_key(self, key: int, char: str) -> bool:
         """Handle playback transport keys."""

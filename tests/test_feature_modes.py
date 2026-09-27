@@ -49,6 +49,15 @@ def _hand(start_x: float, start_y: float, raised: int = 0) -> list[_Tip]:
     return points
 
 
+def _pinched_hand(start_x: float, start_y: float) -> list[_Tip]:
+    """Build a hand with the index raised but the thumb pulled into a pinch."""
+
+    points = [_Tip(start_x + i * 0.01, start_y + 0.1) for i in range(21)]
+    points[8] = _Tip(points[8].x, start_y - 0.05)
+    points[4] = _Tip(points[8].x, start_y - 0.04)
+    return points
+
+
 class FKeyFeatureTests(unittest.TestCase):
     """Validate F15-F20 mapping across backend encodings."""
 
@@ -207,6 +216,15 @@ class AirSignatureTests(unittest.TestCase):
         sig.process(frame, {"hands": [_hand(0.1, 0.5, raised=1)], "index_tip": _Tip(0.1, 0.5)}, {})
         sig.clear()
         self.assertFalse(bool(sig.canvas.any()))
+
+    def test_pinch_lifts_pen(self) -> None:
+        """Pinching thumb+index should lift the pen (no drawing)."""
+
+        sig = AirSignatureMode(output_dir=str(Path("tmp_none")))
+        raised = {"hands": [_hand(0.1, 0.5, raised=1)], "handedness": ["Right"]}
+        pinched = {"hands": [_pinched_hand(0.1, 0.5)], "handedness": ["Right"]}
+        self.assertTrue(sig._pen_down(raised))
+        self.assertFalse(sig._pen_down(pinched))
 
 
 if __name__ == "__main__":

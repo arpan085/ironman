@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from ..core.base_mode import BaseMode
+from ..core.smoothing import PointFilter
 from .common import finger_xy
 
 
@@ -17,12 +18,21 @@ class VirtualDrawingCanvasMode(BaseMode):
     name = "virtual_drawing_canvas"
     shortcut = "1"
 
-    def __init__(self) -> None:
-        """Initialize drawing state."""
+    def __init__(
+        self,
+        brush_size: int = 8,
+        eraser_size: int = 40,
+        draw_color: tuple[int, int, int] = (0, 255, 255),
+        smooth_factor: float = 0.35,
+    ) -> None:
+        """Initialize drawing state from config values."""
 
         self.canvas: np.ndarray | None = None
-        self.color = (0, 255, 255)
-        self.brush_size = 8
+        self.color = draw_color
+        self.brush_size = brush_size
+        self.eraser_size = eraser_size
+        self.smooth_factor = smooth_factor
+        self.filter = PointFilter(alpha=smooth_factor)
         self.eraser = False
         self.prev: tuple[int, int] | None = None
         self.history: deque[np.ndarray] = deque(maxlen=15)
@@ -43,17 +53,19 @@ class VirtualDrawingCanvasMode(BaseMode):
         point = finger_xy(landmarks, frame.shape)
         if point is None:
             self.prev = None
+            self.filter.initialized = False
         else:
+            smooth = self.filter.apply(*point)
             if self.prev is None:
                 self.snapshot()
             if self.prev is not None:
                 color = (0, 0, 0) if self.eraser else self.color
-                size = max(2, self.brush_size * (2 if self.eraser else 1))
-                cv2.line(canvas, self.prev, point, color, size, cv2.LINE_AA)
-            self.prev = point
+                size = max(2, self.eraser_size if self.eraser else self.brush_size)
+                cv2.line(canvas, self.prev, smooth, color, size, cv2.LINE_AA)
+            self.prev = smooth
 
         blended = cv2.addWeighted(frame, 1.0, canvas, 0.95, 0)
-        cv2.putText(blended, "1 Canvas | C Clear | U Undo | E Eraser | P Palette | S Save", (18, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(blended, "1 Canvas | C Clear | U Undo | E Eraser | P Palette | S Save", (18, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 229, 255), 2, cv2.LINE_AA)
         return blended
 
     def on_key(self, key: int, char: str) -> bool:

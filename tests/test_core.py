@@ -244,6 +244,49 @@ class ModeBehaviorTests(unittest.TestCase):
             self.assertTrue(player.on_key(32, ""))
             self.assertFalse(player.is_playing)
 
+    def test_music_player_next_while_playing_stays_playing(self) -> None:
+        """Switching tracks while playing should keep playing the new track."""
+
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("a.mp3", "b.mp3"):
+                Path(tmp, name).write_bytes(b"\x00")
+            player = MusicPlayerMode(tmp)
+            player._ready = True
+            with mock.patch("pygame.mixer.music.load"), \
+                    mock.patch("pygame.mixer.music.set_volume"), \
+                    mock.patch("pygame.mixer.music.play"), \
+                    mock.patch("pygame.mixer.music.pause") as pause:
+                player.play_pause()
+                self.assertTrue(player.is_playing)
+                player.next_track()
+                self.assertEqual(player.idx, 1)
+                self.assertTrue(player.is_playing)
+                pause.assert_not_called()
+                player.prev_track()
+                self.assertEqual(player.idx, 0)
+                self.assertTrue(player.is_playing)
+
+    def test_music_player_next_from_paused_starts_playing(self) -> None:
+        """Switching tracks from a paused state should start playback."""
+
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("a.mp3", "b.mp3"):
+                Path(tmp, name).write_bytes(b"\x00")
+            player = MusicPlayerMode(tmp)
+            player._ready = True
+            with mock.patch("pygame.mixer.music.load"), \
+                    mock.patch("pygame.mixer.music.set_volume"), \
+                    mock.patch("pygame.mixer.music.play"):
+                player.play_pause()
+                player.play_pause()
+                self.assertFalse(player.is_playing)
+                player.next_track()
+                self.assertTrue(player.is_playing)
+
     def test_games_cycle_and_score(self) -> None:
         """Games should cycle modes and score balloon pops."""
 
@@ -286,6 +329,19 @@ class ModeBehaviorTests(unittest.TestCase):
         self.assertTrue((mode.board < 255).any())
         mode.clear()
         self.assertFalse((mode.board < 255).any())
+
+    def test_whiteboard_toggle_style_cycles_palette(self) -> None:
+        """toggle_style (bound to the global P key) should cycle marker colors."""
+
+        mode = VirtualWhiteboardMode()
+        initial = mode.color
+        mode.toggle_style()
+        self.assertNotEqual(mode.color, initial)
+        mode.toggle_style()
+        mode.toggle_style()
+        mode.toggle_style()
+        mode.toggle_style()
+        self.assertEqual(mode.color, initial)
 
 
 if __name__ == "__main__":

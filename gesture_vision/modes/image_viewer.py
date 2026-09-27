@@ -17,11 +17,16 @@ class ImageViewerMode(BaseMode):
     def __init__(self, image_dir: str = "images") -> None:
         """Load images from configured folder."""
 
-        self.image_dir = Path(image_dir)
+        p = Path(image_dir)
+        if not p.is_absolute() and not p.exists():
+            root_candidate = Path(__file__).resolve().parents[2] / image_dir
+            if root_candidate.exists():
+                p = root_candidate
+        self.image_dir = p
         self.index = 0
         self.zoom = 1.0
         self.angle = 0.0
-        self.paths = sorted([p for p in self.image_dir.glob("*.*") if p.suffix.lower() in {".png", ".jpg", ".jpeg"}])
+        self.paths = sorted([img for img in self.image_dir.glob("*.*") if img.suffix.lower() in {".png", ".jpg", ".jpeg"}]) if self.image_dir.exists() else []
 
     def next(self) -> None:
         """Move to next image."""

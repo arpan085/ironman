@@ -9,14 +9,17 @@ import cv2  # type: ignore
 import numpy as np  # type: ignore
 
 from ..core.base_mode import BaseMode
+from ..core.system_controls import distance
 from .common import finger_xy, hands_of
 
 
 class AirSignatureMode(BaseMode):
-    """Index finger draws; a pinch lifts the pen; palm clears; S saves."""
+    """Index finger draws; a pinch lifts the pen; S saves."""
 
     name = "air_signature"
     shortcut = "F20"
+
+    PINCH_THRESHOLD = 0.05
 
     def __init__(self, output_dir: str = "signatures") -> None:
         """Open a transparent drawing surface."""
@@ -33,12 +36,15 @@ class AirSignatureMode(BaseMode):
             self.canvas = np.zeros((h, w, 4), dtype=np.uint8)
 
     def _pen_down(self, landmarks: dict[str, Any]) -> bool:
-        """Return True when the index finger is extended (drawing)."""
+        """Return True when the index finger is extended and not pinching."""
 
         if not hands_of(landmarks):
             return False
         points = hands_of(landmarks)[0]
-        return points[8].y < points[6].y
+        if points[8].y >= points[6].y:
+            return False
+        pinch = distance(points[4], points[8])
+        return pinch > self.PINCH_THRESHOLD
 
     def clear(self) -> None:
         """Erase the canvas and reset the stroke."""

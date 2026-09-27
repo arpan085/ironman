@@ -54,13 +54,16 @@ class FingerKeyboardMode(BaseMode):
         self.typed = ""
 
     def on_key(self, key: int, char: str) -> bool:
-        """Support backspace and clear from the physical keyboard too."""
+        """Support backspace, clear, and physical keys from the keyboard."""
 
         if key == 8:
             self.typed = self.typed[:-1]
             return True
         if key == ord("c"):
             self.clear()
+            return True
+        if char and len(char) == 1 and (char.isalnum() or char in " .,!?-"):
+            self.type_key(char.upper())
             return True
         return False
 

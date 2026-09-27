@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 
 os.environ.setdefault("GLOG_minloglevel", "2")
@@ -68,8 +69,24 @@ class HandTracker:
     def process(self, frame_bgr: Any) -> dict[str, Any]:
         """Return parsed landmarks and derived gesture values."""
 
+        empty: dict[str, Any] = {
+            "hands": [],
+            "handedness": [],
+            "fingers": [],
+            "fingers_up": 0,
+            "index_tip": None,
+            "thumb_tip": None,
+            "wrist": None,
+            "palm_center": None,
+            "is_pinch": False,
+            "pinch_distance": 1.0,
+            "is_open_palm": False,
+            "is_fist": False,
+            "finger_states": [],
+        }
+
         if not self.available or self._landmarker is None:
-            return {"hands": [], "index_tip": None, "thumb_tip": None, "fingers_up": 0}
+            return empty
 
         import cv2  # type: ignore
 
@@ -90,6 +107,34 @@ class HandTracker:
 
         index_tip = hands[0][8] if hands else None
         thumb_tip = hands[0][4] if hands else None
+        wrist = hands[0][0] if hands else None
+
+        # Derive palm center (average of base knuckles + wrist)
+        palm_center = None
+        is_pinch = False
+        pinch_dist = 1.0
+        finger_states: list[bool] = []
+        is_open_palm = False
+        is_fist = False
+
+        if hands:
+            h0 = hands[0]
+            palm_x = (h0[0].x + h0[5].x + h0[9].x + h0[13].x + h0[17].x) / 5.0
+            palm_y = (h0[0].y + h0[5].y + h0[9].y + h0[13].y + h0[17].y) / 5.0
+            palm_z = (h0[0].z + h0[5].z + h0[9].z + h0[13].z + h0[17].z) / 5.0
+            palm_center = HandPoint(palm_x, palm_y, palm_z)
+
+            # Pinch calculation (thumb tip to index tip normalized distance)
+            if index_tip and thumb_tip:
+                pinch_dist = math.hypot(index_tip.x - thumb_tip.x, index_tip.y - thumb_tip.y)
+                is_pinch = pinch_dist < 0.07
+
+            lbl = handedness[0] if handedness else "Right"
+            finger_states = self._get_finger_states(h0, lbl)
+            raised = fingers[0] if fingers else 0
+            is_open_palm = raised >= 4
+            is_fist = raised == 0
+
         return {
             "hands": hands,
             "handedness": handedness,
@@ -97,7 +142,33 @@ class HandTracker:
             "fingers_up": fingers[0] if fingers else 0,
             "index_tip": index_tip,
             "thumb_tip": thumb_tip,
+            "wrist": wrist,
+            "palm_center": palm_center,
+            "is_pinch": is_pinch,
+            "pinch_distance": pinch_dist,
+            "is_open_palm": is_open_palm,
+            "is_fist": is_fist,
+            "finger_states": finger_states,
         }
+
+    def _get_finger_states(self, points: list[HandPoint], label: str) -> list[bool]:
+        """Return boolean states [thumb, index, middle, ring, pinky] for raised fingers."""
+
+        tips = [4, 8, 12, 16, 20]
+        pips = [3, 6, 10, 14, 18]
+        states: list[bool] = []
+
+        # Thumb
+        if label == "Left":
+            states.append(points[tips[0]].x < points[pips[0]].x)
+        else:
+            states.append(points[tips[0]].x > points[pips[0]].x)
+
+        # 4 fingers
+        for tip, pip in zip(tips[1:], pips[1:]):
+            states.append(points[tip].y < points[pip].y)
+
+        return states
 
     def _count_fingers(self, points: list[HandPoint], label: str) -> int:
         """Estimate number of raised fingers using handedness-aware thumb logic."""

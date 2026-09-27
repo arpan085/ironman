@@ -1,15 +1,17 @@
-"""Performance HUD mode for FPS/CPU/resolution."""
+"""Performance HUD mode for FPS/CPU/RAM/resolution with Stark styling."""
 
 from __future__ import annotations
 
 import time
 from typing import Any
+import numpy as np
 
 from ..core.base_mode import BaseMode
+from .common import draw_hud_panel
 
 
 class PerformanceHUDMode(BaseMode):
-    """Shows live FPS, CPU usage, and camera resolution."""
+    """Shows live FPS, CPU usage, RAM consumption, and camera resolution."""
 
     name = "performance_hud"
     shortcut = "F10"
@@ -20,6 +22,7 @@ class PerformanceHUDMode(BaseMode):
         self.prev = time.perf_counter()
         self.fps = 0.0
         self.cpu = 0.0
+        self.ram = 0.0
         self._psutil = None
         try:
             import psutil  # type: ignore
@@ -29,7 +32,7 @@ class PerformanceHUDMode(BaseMode):
             self._psutil = None
 
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
-        """Compute performance metrics and draw overlays."""
+        """Compute performance metrics and draw Stark-styled overlays."""
 
         import cv2  # type: ignore
 
@@ -42,17 +45,36 @@ class PerformanceHUDMode(BaseMode):
         if self._psutil is not None:
             try:
                 self.cpu = float(self._psutil.cpu_percent(interval=None) or 0.0)
+                self.ram = float(self._psutil.virtual_memory().percent or 0.0)
             except Exception:
                 self.cpu = 0.0
+                self.ram = 0.0
 
         h, w = frame.shape[:2]
         target = int(context.get("fps_target", 0) or 0)
-        fps_text = f"F10 HUD FPS: {self.fps:.1f} (target {target})"
-        cpu_text = f"CPU: {self.cpu:.1f}%"
-        cv2.putText(frame, fps_text, (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (80, 255, 120), 2)
-        cv2.putText(frame, cpu_text, (18, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (160, 230, 255), 2)
-        cv2.putText(frame, f"Res: {w}x{h}", (18, 86), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230, 230, 230), 2)
-        cv2.putText(frame, "FPS graph", (18, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 2)
-        bar_w = max(0, min(w - 60, int(self.fps * 4)))
-        cv2.rectangle(frame, (60, 108), (60 + bar_w, 124), (80, 255, 120), -1)
+
+        # Draw HUD Panel
+        draw_hud_panel(frame, 18, 56, 320, 165, title="PERFORMANCE TELEMETRY")
+
+        fps_text = f"FPS: {self.fps:.1f} / {target} TARGET"
+        cpu_text = f"CPU LOAD: {self.cpu:.1f}%"
+        ram_text = f"RAM USAGE: {self.ram:.1f}%"
+        res_text = f"RESOLUTION: {w}x{h}"
+
+        c_cyan = (0, 229, 255)
+        c_green = (100, 255, 140)
+
+        cv2.putText(frame, fps_text, (28, 86), cv2.FONT_HERSHEY_SIMPLEX, 0.45, c_green, 1, cv2.LINE_AA)
+        cv2.putText(frame, cpu_text, (28, 108), cv2.FONT_HERSHEY_SIMPLEX, 0.45, c_cyan, 1, cv2.LINE_AA)
+        cv2.putText(frame, ram_text, (28, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.45, c_cyan, 1, cv2.LINE_AA)
+        cv2.putText(frame, res_text, (28, 152), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1, cv2.LINE_AA)
+
+        # FPS bar
+        cv2.putText(frame, "FPS GAUGE:", (28, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1, cv2.LINE_AA)
+        max_bar = 180
+        bar_ratio = min(1.0, max(0.0, self.fps / max(1, target)))
+        fill_w = int(max_bar * bar_ratio)
+        cv2.rectangle(frame, (110, 170), (110 + max_bar, 184), (0, 80, 100), 1)
+        cv2.rectangle(frame, (110, 170), (110 + fill_w, 184), c_green, -1)
+
         return frame
