@@ -26,3 +26,12 @@ class BaseMode(ABC):
     @abstractmethod
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
         """Process a frame and return a rendered frame."""
+
+    def on_key(self, key: int, char: str) -> bool:
+        """Consume a key event.
+
+        ``key`` is the raw OpenCV key code, ``char`` the lowercase single
+        character for printable keys. Return True when handled.
+        """
+
+        return False

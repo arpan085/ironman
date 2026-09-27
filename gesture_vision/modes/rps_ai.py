@@ -22,6 +22,7 @@ class RockPaperScissorsMode(BaseMode):
         self.ai_score = 0
         self.player_choice = "-"
         self.ai_choice = "-"
+        self.last_fingers = 0
 
     def _gesture_to_move(self, fingers_up: int) -> str:
         """Map finger count to RPS gesture."""
@@ -32,10 +33,12 @@ class RockPaperScissorsMode(BaseMode):
             return "scissors"
         return "paper"
 
-    def play_round(self, fingers_up: int) -> None:
+    def play_round(self, fingers_up: int | None = None) -> None:
         """Resolve one round and update scoreboard."""
 
-        self.player_choice = self._gesture_to_move(fingers_up)
+        if fingers_up is not None:
+            self.last_fingers = fingers_up
+        self.player_choice = self._gesture_to_move(self.last_fingers)
         self.ai_choice = random.choice(["rock", "paper", "scissors"])
         rules = {
             ("rock", "scissors"),
@@ -54,7 +57,8 @@ class RockPaperScissorsMode(BaseMode):
 
         import cv2  # type: ignore
 
-        draw_instruction(frame, "4", "rock_paper_scissors", "ENTER play")
+        self.last_fingers = int(landmarks.get("fingers_up", 0))
+        draw_instruction(frame, "4", "rock_paper_scissors", f"Fingers: {self.last_fingers} | ENTER play")
         cv2.putText(frame, f"You: {self.player_choice}  AI: {self.ai_choice}", (18, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 220, 100), 2)
         cv2.putText(frame, f"Score {self.player_score} : {self.ai_score}", (18, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (80, 255, 100), 2)
         return frame

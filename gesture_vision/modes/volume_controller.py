@@ -17,9 +17,11 @@ class VolumeControllerMode(BaseMode):
     shortcut = "5"
 
     def __init__(self) -> None:
-        """Initialize last known percentage."""
+        """Initialize last known percentage and update throttle."""
 
         self.volume = 0
+        self._last_applied = -1
+        self._frame = 0
         self.filter = FloatFilter(alpha=0.25)
 
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
@@ -29,10 +31,13 @@ class VolumeControllerMode(BaseMode):
 
         thumb = landmarks.get("thumb_tip")
         index = landmarks.get("index_tip")
+        self._frame += 1
         if thumb is not None and index is not None:
             raw_distance = distance(thumb, index)
             self.volume = int(self.filter.apply(normalize_percentage(raw_distance)))
-            set_volume(self.volume)
+            if self._frame % 4 == 0 and abs(self.volume - self._last_applied) >= 2:
+                set_volume(self.volume)
+                self._last_applied = self.volume
 
         cv2.rectangle(frame, (20, 130), (55, 360), (70, 70, 70), 2)
         top = int(360 - (230 * self.volume / 100))

@@ -64,6 +64,11 @@ class Recorder:
         if self.is_open():
             self.writer.write(frame)
 
+    def is_recording(self) -> bool:
+        """Return whether a video is currently being written."""
+
+        return self.writer is not None
+
     def stop_video(self) -> None:
         """Close active video writer."""
 

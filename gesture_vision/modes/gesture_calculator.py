@@ -32,12 +32,38 @@ class GestureCalculatorMode(BaseMode):
         except Exception:
             self.result = "Error"
 
+    def clear(self) -> None:
+        """Reset the current expression."""
+
+        self.expression = ""
+        self.result = ""
+
+    def backspace(self) -> None:
+        """Remove the last character of the expression."""
+
+        self.expression = self.expression[:-1]
+
+    def on_key(self, key: int, char: str) -> bool:
+        """Consume digits, operators, and action keys while active."""
+
+        if key == 8:
+            self.backspace()
+            return True
+        if key in (ord("="), ord("\r")):
+            self.evaluate()
+            return True
+        if char in "0123456789+-*/(). ":
+            self.expression += char
+            self.expression = self.expression[:64]
+            return True
+        return False
+
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
         """Render expression and result panel."""
 
         import cv2  # type: ignore
 
-        draw_instruction(frame, "9", "gesture_calculator", "Expression mode")
+        draw_instruction(frame, "9", "gesture_calculator", "Type digits/ops, = or ENTER to eval")
         cv2.putText(frame, f"Expr: {self.expression[:42]}", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 220, 120), 2)
         cv2.putText(frame, f"Result: {self.result}", (18, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 255, 200), 2)
         return frame

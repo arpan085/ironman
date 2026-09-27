@@ -9,6 +9,7 @@ import numpy as np
 
 from ..config import AppConfig, load_config
 from ..core.base_mode import BaseMode
+from ..core.smoothing import PointFilter
 from .common import draw_instruction, finger_xy
 
 
@@ -18,14 +19,23 @@ class VirtualDrawingCanvasMode(BaseMode):
     name = "virtual_drawing_canvas"
     shortcut = "1"
 
-    def __init__(self, config: AppConfig | None = None) -> None:
-        """Initialize drawing state."""
+    def __init__(
+        self,
+        config: AppConfig | None = None,
+        brush_size: int | None = None,
+        eraser_size: int | None = None,
+        draw_color: tuple[int, int, int] | None = None,
+        smooth_factor: float | None = None,
+    ) -> None:
+        """Initialize drawing state from config values or defaults."""
 
         self.config = config or load_config()
         self.canvas: np.ndarray | None = None
-        self.color = self.config.draw_color
-        self.brush_size = self.config.brush_size
-        self.eraser_size = self.config.eraser_size
+        self.brush_size = brush_size if brush_size is not None else self.config.brush_size
+        self.eraser_size = eraser_size if eraser_size is not None else self.config.eraser_size
+        self.color = draw_color if draw_color is not None else self.config.draw_color
+        self.smooth_factor = smooth_factor if smooth_factor is not None else self.config.smooth_factor
+        self.filter = PointFilter(alpha=self.smooth_factor)
         self.eraser = False
         self.prev: tuple[int, int] | None = None
         self.history: deque[np.ndarray] = deque(maxlen=15)
@@ -46,16 +56,37 @@ class VirtualDrawingCanvasMode(BaseMode):
         point = finger_xy(landmarks, frame.shape)
         if point is None:
             self.prev = None
+            self.filter.initialized = False
         else:
+            smooth = self.filter.apply(*point)
+            if self.prev is None:
+                self.snapshot()
             if self.prev is not None:
                 color = (0, 0, 0) if self.eraser else self.color
-                size = max(2, (self.eraser_size if self.eraser else self.brush_size) * (2 if self.eraser else 1))
-                cv2.line(canvas, self.prev, point, color, size, cv2.LINE_AA)
-            self.prev = point
+                size = max(2, self.eraser_size if self.eraser else self.brush_size)
+                cv2.line(canvas, self.prev, smooth, color, size, cv2.LINE_AA)
+            self.prev = smooth
 
         blended = cv2.addWeighted(frame, 1.0, canvas, 0.95, 0)
         draw_instruction(blended, "1", "virtual_drawing_canvas", "C clear | U undo | E eraser | P palette | S save")
         return blended
+
+    def on_key(self, key: int, char: str = "") -> bool:
+        """Cycle palette with the P key or toggle eraser with E."""
+
+        if key in {ord("p"), ord("P")}:
+            self.cycle_palette()
+            return True
+        if key in {ord("e"), ord("E")}:
+            self.eraser = not self.eraser
+            return True
+        if key in {ord("u"), ord("U")}:
+            self.undo()
+            return True
+        if key in {ord("c"), ord("C")}:
+            self.clear()
+            return True
+        return False
 
     def cycle_palette(self) -> None:
         """Cycle through a fixed color palette."""

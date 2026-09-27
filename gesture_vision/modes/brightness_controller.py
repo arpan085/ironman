@@ -17,9 +17,11 @@ class BrightnessControllerMode(BaseMode):
     shortcut = "6"
 
     def __init__(self) -> None:
-        """Initialize brightness percentage cache."""
+        """Initialize brightness percentage cache and throttle."""
 
         self.brightness = 50
+        self._last_applied = -1
+        self._frame = 0
         self.filter = FloatFilter(alpha=0.25)
 
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
@@ -29,10 +31,13 @@ class BrightnessControllerMode(BaseMode):
 
         thumb = landmarks.get("thumb_tip")
         index = landmarks.get("index_tip")
+        self._frame += 1
         if thumb is not None and index is not None:
             raw_distance = distance(thumb, index)
             self.brightness = int(self.filter.apply(normalize_percentage(raw_distance)))
-            set_brightness(self.brightness)
+            if self._frame % 4 == 0 and abs(self.brightness - self._last_applied) >= 2:
+                set_brightness(self.brightness)
+                self._last_applied = self.brightness
 
         draw_instruction(frame, "6", "brightness_controller", "Pinch to adjust")
         cv2.putText(frame, f"Brightness: {self.brightness}%", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (200, 255, 120), 2)
