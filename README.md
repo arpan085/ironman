@@ -33,8 +33,7 @@ A modular **Python 3.11+** computer-vision and AI suite that bundles gesture-con
 - **Global J.A.R.V.I.S. Prompt**: Press `J` or click `[ CHAT (J) ]` on the bottom dock in any mode to summon the holographic Stark command prompt.
 - **Synthesized Iron Man Sound Effects**: Repulsor charge, repulsor blast, Jarvis chime, target lock, arc reactor hum, and UI pings (zero audio files needed).
 - **Stark Tech HUD & Dark Sidebar**: Futuristic translucent UI panels, FPS/telemetry status bar, and scrollable Tkinter sidebar.
-
----
+- **OOP Architecture**: Modular clean design with dedicated core modules, extensible `BaseMode` interface, and thorough unit/integration test coverage.
 
 ## Project Structure
 
@@ -61,6 +60,7 @@ ironman/
 │   │   ├── recorder.py
 │   │   ├── smoothing.py
 │   │   ├── soundgen.py            # Synthesizer for notes, drums, chords, repulsor blasts & chimes
+│   │   ├── suit_ai.py             # Wake-word and telemetry assistant
 │   │   └── system_controls.py     # Throttled volume, brightness, and scalar getters
 │   ├── modes/
 │   │   ├── __init__.py
@@ -162,7 +162,7 @@ You can control everything directly with your **mouse** without memorizing short
 - **`[ J.A.R.V.I.S.: ON / OFF ]`**: Click to toggle voice synthesis and AI audio on or off.
 - **`[ 💬 CHAT (J) ]`**: Click to open the voice/text command dialog.
 - **`[ 📸 SNAP (S) ]`**: Click to save a high-resolution screenshot.
-- **`[ 🔴 REC (V) ]`**: Click to start or stop flight video recording.
+- **`[ 🔴 REC (R) ]`**: Click to start or stop flight video recording.
 - **`[ 🧹 CLEAR (C) ]`**: Click to clear canvas or restart game.
 - **`[ ? HELP ]`**: Click to toggle the full shortcuts overlay.
 - **`[ ✕ QUIT ]`**: Click to safely exit.
@@ -190,15 +190,14 @@ You can control everything directly with your **mouse** without memorizing short
   - `E`: Eraser toggle (Drawing Canvas / Whiteboard)
   - `P`: Palette / style cycle
   - `S`: Screenshot (saved to `captures/`)
-  - `V`: Start video recording
-  - `Z`: Stop video recording
+  - `R`: Start/Stop video recording (or `Z` to stop)
   - `Q` or `Esc`: Quit application
 
 ---
 
 ## J.A.R.V.I.S. AI Configuration
 
-Your `.env` file is already active and configured with:
+Your `.env` file can be configured from `.env.example`:
 ```env
 GEMINI_API_KEY=your_key_here
 JARVIS_MODEL=gemini-3.8-flash
@@ -216,24 +215,31 @@ J.A.R.V.I.S. automatically connects to **Gemini 3.8 Flash** with automatic fallb
 ```
 
 Optional CLI flags:
-
 ```powershell
 .venv\Scripts\python -m gesture_vision.main --camera 0 --fps 30 --sidebar
 ```
 
 ---
 
+## Operational Notes
+- `pycaw` volume control is Windows-only and fails safely on unsupported systems.
+- Missing optional dependencies are handled gracefully to keep the app running.
+- Target FPS can be tuned in `gesture_vision/config/default_config.json`.
+- Voice commands and wake-word listening use `SpeechRecognition` with microphone support.
+
+---
+
 ## Test Suite
 
-Run all 69 unit tests:
+Run unit and integration tests:
 
 ```powershell
 .venv\Scripts\python -m unittest discover -s tests -v
 ```
 
-**Results: 69 tests passing (100% OK)**
 - [`tests/test_core.py`](file:///c:/Users/LENOVO/ironman/tests/test_core.py)
 - [`tests/test_feature_modes.py`](file:///c:/Users/LENOVO/ironman/tests/test_feature_modes.py)
 - [`tests/test_new_modes.py`](file:///c:/Users/LENOVO/ironman/tests/test_new_modes.py)
 - [`tests/test_jarvis.py`](file:///c:/Users/LENOVO/ironman/tests/test_jarvis.py)
 - [`tests/test_ironman_mode.py`](file:///c:/Users/LENOVO/ironman/tests/test_ironman_mode.py)
+

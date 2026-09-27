@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass
 import logging
 import math
+import os
 from pathlib import Path
 import time
 from typing import Any
 import numpy as np
 
 from .config import AppConfig, load_config
+from .core.base_mode import BaseMode
 from .core.hand_tracker import HandTracker
 from .core.jarvis import JarvisAssistant
 from .core.mode_manager import ModeManager
 from .core.recorder import Recorder
 from .core.soundgen import get_master_volume, is_muted, play_named, set_master_volume, toggle_mute
+from .core.suit_ai import SuitAssistant, TelemetrySnapshot, VoiceCommand
 from .logger import setup_logging
 from .modes.air_drums import AirDrumsMode
 from .modes.air_guitar import AirGuitarMode
@@ -111,12 +115,7 @@ class GestureVisionApp:
         # Register all 31 modes
         self.mode_manager = ModeManager(
             [
-                VirtualDrawingCanvasMode(
-                    brush_size=self.config.brush_size,
-                    eraser_size=self.config.eraser_size,
-                    draw_color=self.config.draw_color,
-                    smooth_factor=self.config.smooth_factor,
-                ),
+                VirtualDrawingCanvasMode(config=self.config),
                 AirPainterMode(),
                 FingerCounterMode(),
                 RockPaperScissorsMode(),
@@ -125,12 +124,7 @@ class GestureVisionApp:
                 VirtualMouseMode(),
                 FingerKeyboardMode(),
                 GestureCalculatorMode(),
-                VirtualWhiteboardMode(
-                    brush_size=self.config.brush_size,
-                    eraser_size=self.config.eraser_size,
-                    draw_color=self.config.draw_color,
-                    smooth_factor=self.config.smooth_factor,
-                ),
+                VirtualWhiteboardMode(config=self.config),
                 ColorTrackingMode(),
                 ObjectMeasurementMode(),
                 FaceFilterMode(),
@@ -155,9 +149,15 @@ class GestureVisionApp:
             ]
         )
         self.recorder = Recorder(Path(self.config.record_output_dir))
+        self.assistant = SuitAssistant(self.config, self.mode_manager)
         self.running = False
         self._show_help = False
+        self.show_help = False
         self._fps = 0.0
+        self.fps_live = 0.0
+        self.cpu_load = 0.0
+        self.temperature_c = 0.0
+        self.battery_percent: int | None = None
         self._latest_frame: np.ndarray | None = None
 
         # Boot Sequence State (Version 2.0)
@@ -176,6 +176,8 @@ class GestureVisionApp:
     def launch_sidebar(self) -> None:
         """Start optional sidebar with all shortcuts."""
 
+        if not self.config.sidebar_enabled:
+            return
         shortcuts = [(m.name, m.shortcut) for m in self.mode_manager.list_modes()]
         try:
             SidebarUI(self.config.app_name, shortcuts).start()
@@ -242,7 +244,6 @@ class GestureVisionApp:
                 logger.info("Master audio muted")
 
         elif button_id == "toggle_jarvis":
-            # Toggle Jarvis Voice & AI
             new_state = not self.jarvis.voice.enabled
             self.jarvis.voice.enabled = new_state
             self.config.jarvis_voice = new_state
@@ -277,6 +278,7 @@ class GestureVisionApp:
 
         elif button_id == "help":
             self._show_help = not self._show_help
+            self.show_help = self._show_help
 
         elif button_id == "chat":
             self._jarvis_prompt_active = not self._jarvis_prompt_active
@@ -363,6 +365,8 @@ class GestureVisionApp:
         if self.config.sidebar_enabled:
             self.launch_sidebar()
 
+        self.assistant.play_startup_chime()
+        self.assistant.start()
         self.running = True
         self._boot_start_time = time.time()
         start = time.time()
@@ -384,6 +388,11 @@ class GestureVisionApp:
 
             frame = cv2.flip(frame, 1)
             self._latest_frame = frame
+            now = time.perf_counter()
+            self.fps_live = self._fps
+            self.cpu_load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
+            self.temperature_c = 34.0 + min(46.0, self.cpu_load * 8.0 + self.fps_live * 0.08)
+            self.battery_percent = self._read_battery_percent()
 
             # Render Boot Sequence or Main Suite HUD
             if self._in_boot_sequence:
@@ -392,14 +401,24 @@ class GestureVisionApp:
                 landmarks = self.tracker.process(frame)
                 context: dict[str, Any] = {
                     "fps_target": self.config.target_fps,
+                    "fps_live": self.fps_live,
+                    "cpu_load": self.cpu_load,
+                    "temperature_c": self.temperature_c,
+                    "battery_percent": self.battery_percent,
                     "elapsed": time.time() - start,
                     "jarvis": self.jarvis,
                 }
                 frame = self.mode_manager.active_mode.process(frame, landmarks, context)
+                if self._show_help or self.show_help:
+                    self._render_help_overlay(frame)
                 self._draw_shell(frame)
 
             self.recorder.write(frame)
             cv2.imshow(self.config.app_name, frame)
+
+            voice_command = self.assistant.poll_command()
+            if voice_command is not None and not self._handle_voice_command(voice_command):
+                break
 
             key = cv2.waitKey(1)
             if not self._handle_key(key, frame):
@@ -413,6 +432,8 @@ class GestureVisionApp:
                 time.sleep(delay)
 
         self.recorder.stop_video()
+        self.assistant.play_shutdown_chime()
+        self.assistant.stop()
         cap.release()
         cv2.destroyAllWindows()
         self.running = False
@@ -562,7 +583,8 @@ class GestureVisionApp:
         cv2.line(frame, (0, h - 32), (w, h - 32), (0, 100, 130), 1)
 
         recording = self.recorder.is_recording()
-        fps_info = f"FPS: {self._fps:4.0f}  |  CAM: {self.config.camera_index}"
+        batt = "--" if self.battery_percent is None else f"{self.battery_percent}%"
+        fps_info = f"FPS: {self._fps:4.0f} | CPU: {self.cpu_load:3.1f}% | TEMP: {self.temperature_c:4.1f}C | BAT: {batt}"
         if recording:
             fps_info += "  |  REC [ACTIVE]"
             cv2.circle(frame, (14, h - 16), 5, (0, 0, 255), -1, cv2.LINE_AA)
@@ -594,7 +616,7 @@ class GestureVisionApp:
             self._render_jarvis_global_overlay(frame)
 
         # Help Overlay (when opened)
-        if self._show_help:
+        if self._show_help or self.show_help:
             self._render_help_overlay(frame)
 
     def _draw_global_jarvis_toast(self, frame: np.ndarray) -> None:
@@ -715,7 +737,7 @@ class GestureVisionApp:
         cv2.line(frame, (bx, by + bh), (bx + arm, by + bh), c, 2, cv2.LINE_AA)
         cv2.line(frame, (bx, by + bh), (bx, by + bh - arm), c, 2, cv2.LINE_AA)
         cv2.line(frame, (bx + bw, by + bh), (bx + bw - arm, by + bh), c, 2, cv2.LINE_AA)
-        cv2.line(frame, (bx + bw, by + bh), (bx + bw, by + bh - arm), c, 2, cv2.LINE_AA)
+        cv2.line(frame, (bx + bw, by + bh), (bx + bw - arm, by + bh), c, 2, cv2.LINE_AA)
 
         cv2.putText(
             frame,
@@ -921,6 +943,7 @@ class GestureVisionApp:
 
         if typed == "h":
             self._show_help = not self._show_help
+            self.show_help = self._show_help
             return True
 
         # Global J.A.R.V.I.S. Prompt toggle
@@ -949,6 +972,12 @@ class GestureVisionApp:
             try:
                 if active.on_key(key, typed):
                     return True
+            except TypeError:
+                try:
+                    if active.on_key(key):
+                        return True
+                except Exception:
+                    pass
             except Exception:  # noqa: BLE001
                 pass
 
@@ -1005,6 +1034,77 @@ class GestureVisionApp:
         elif low_byte == ord("z"):
             self.recorder.stop_video()
         elif low_byte == ord("\r") and hasattr(active, "play_round"):
-            active.play_round()
+            try:
+                active.play_round()
+            except TypeError:
+                active.play_round(0)
 
         return True
+
+    def _telemetry_snapshot(self) -> TelemetrySnapshot:
+        """Build suit-status telemetry payload."""
+
+        return TelemetrySnapshot(
+            fps=self.fps_live,
+            cpu_load=self.cpu_load,
+            temperature_c=self.temperature_c,
+            battery_percent=self.battery_percent,
+        )
+
+    def _speak_status(self) -> None:
+        """Speak current suit telemetry summary."""
+
+        if not self.config.suit_status_voice_enabled:
+            return
+        self.assistant.speak_status(self._telemetry_snapshot())
+
+    def _handle_voice_command(self, command: VoiceCommand) -> bool:
+        """Route parsed wake-word commands."""
+
+        if command.kind == "wake_ack":
+            self.assistant.speak("At your service, sir.")
+            return True
+        if command.kind == "status_report":
+            self._speak_status()
+            return True
+        if command.kind == "help_overlay":
+            self.show_help = not self.show_help
+            self._show_help = self.show_help
+            self.assistant.confirm("Opening tactical help overlay.")
+            return True
+        if command.kind == "switch_mode":
+            switched = self.mode_manager.switch(command.payload)
+            self.assistant.confirm(f"Switching to {switched.name.replace('_', ' ')} mode.")
+            return True
+        if command.kind == "shutdown":
+            self.assistant.confirm("Powering down.")
+            return False
+        self.assistant.speak("Command not recognized.")
+        return True
+
+    def _read_battery_percent(self) -> int | None:
+        """Read host battery percent when available."""
+
+        if os.name != "nt":
+            return None
+
+        class _PowerStatus(ctypes.Structure):
+            _fields_ = [
+                ("ACLineStatus", ctypes.c_byte),
+                ("BatteryFlag", ctypes.c_byte),
+                ("BatteryLifePercent", ctypes.c_byte),
+                ("SystemStatusFlag", ctypes.c_byte),
+                ("BatteryLifeTime", ctypes.c_ulong),
+                ("BatteryFullLifeTime", ctypes.c_ulong),
+            ]
+
+        status = _PowerStatus()
+        try:
+            if ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)) == 0:
+                return None
+            percent = int(status.BatteryLifePercent)
+            if percent < 0 or percent > 100:
+                return None
+            return percent
+        except Exception:
+            return None

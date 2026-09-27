@@ -24,6 +24,8 @@ def distance(p1: Any, p2: Any) -> float:
 def normalize_percentage(raw_distance: float, low: float = 0.02, high: float = 0.30) -> int:
     """Map a finger distance to a 0-100 range."""
 
+    if high <= low:
+        return 0
     clipped = max(low, min(high, raw_distance))
     return int((clipped - low) * 100 / (high - low))
 
@@ -40,6 +42,15 @@ def get_brightness() -> int:
         return int(cur)
     except Exception:
         return 50
+
+
+def is_pinch(thumb: Any, index: Any, threshold: float = 0.08) -> bool:
+    """Return True when thumb and index are close enough to form a pinch."""
+
+    if thumb is None or index is None:
+        return False
+    return distance(thumb, index) <= threshold
+
 
 
 def set_brightness(percent: int) -> None:

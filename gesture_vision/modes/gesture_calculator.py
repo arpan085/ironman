@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from .common import draw_instruction
 
 
 class GestureCalculatorMode(BaseMode):
@@ -62,7 +63,7 @@ class GestureCalculatorMode(BaseMode):
 
         import cv2  # type: ignore
 
-        cv2.putText(frame, "9 Gesture Calculator | type digits/ops, = or ENTER to eval", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        draw_instruction(frame, "9", "gesture_calculator", "Type digits/ops, = or ENTER to eval")
         cv2.putText(frame, f"Expr: {self.expression[:42]}", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 220, 120), 2)
         cv2.putText(frame, f"Result: {self.result}", (18, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 255, 200), 2)
         return frame

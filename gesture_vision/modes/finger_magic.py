@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base_mode import BaseMode
-from .common import finger_xy
+from .common import draw_instruction, finger_xy
 
 
 class FingerMagicMode(BaseMode):
@@ -43,5 +43,5 @@ class FingerMagicMode(BaseMode):
                 cv2.polylines(frame, [
                     __import__("numpy").array([[pt[0], pt[1]], [pt[0] + 10, pt[1] + 20], [pt[0] - 8, pt[1] + 36], [pt[0] + 16, pt[1] + 56]])
                 ], False, (255, 255, 255), 2)
-        cv2.putText(frame, f"F8 Finger Magic ({self.effect}) | M next", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        draw_instruction(frame, "F8", "finger_magic", f"M next ({self.effect})")
         return frame

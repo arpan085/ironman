@@ -9,7 +9,7 @@ import numpy as np
 
 from ..core.base_mode import BaseMode
 from ..core.model_cache import HAAR_FRONTALFACE_URL, ensure_model
-from .common import draw_cyber_circle, draw_target_reticle
+from .common import draw_cyber_circle, draw_instruction, draw_target_reticle
 
 
 class FaceFilterMode(BaseMode):
@@ -59,6 +59,14 @@ class FaceFilterMode(BaseMode):
 
         idx = (self.styles.index(self.style) + 1) % len(self.styles)
         self.style = self.styles[idx]
+
+    def on_key(self, key: int, char: str = "") -> bool:
+        """Toggle style on Y or P key."""
+
+        if key in {ord("y"), ord("Y"), ord("p"), ord("P")}:
+            self.toggle_style()
+            return True
+        return False
 
     def process(self, frame: Any, landmarks: dict[str, Any], context: dict[str, Any]) -> Any:
         """Detect faces and overlay selected filter effect."""
@@ -136,5 +144,5 @@ class FaceFilterMode(BaseMode):
                 if roi.size > 0:
                     frame[y : y + h, x : x + w] = cv2.bilateralFilter(roi, 7, 50, 50)
 
-        cv2.putText(frame, f"F3 Face Filter ({self.style.upper()}) | Y/P Toggle Style", (18, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 229, 255), 2, cv2.LINE_AA)
+        draw_instruction(frame, "F3", "face_filter", f"Y toggle ({self.style.upper()})")
         return frame

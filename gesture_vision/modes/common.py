@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any
 import numpy as np
 
@@ -87,6 +88,39 @@ def hand_distance(
     ax, ay = point_xy(hands[0], 8, frame_shape)
     bx, by = point_xy(hands[1], 8, frame_shape)
     return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+
+
+def resolve_package_path(folder: str) -> Path:
+    """Resolve a package-relative asset folder from the gesture_vision package root."""
+
+    return Path(__file__).resolve().parents[1] / folder
+
+
+def clamp_point(point: tuple[int, int], frame_shape: tuple[int, int, int]) -> tuple[int, int]:
+    """Clamp a point inside the frame bounds."""
+
+    h, w = frame_shape[:2]
+    x = max(0, min(w - 1, point[0]))
+    y = max(0, min(h - 1, point[1]))
+    return (x, y)
+
+
+def draw_instruction(
+    frame: Any,
+    shortcut: str,
+    mode_name: str,
+    hints: str,
+    *,
+    color: tuple[int, int, int] = (255, 255, 255),
+    position: tuple[int, int] = (18, 28),
+    font_scale: float = 0.6,
+) -> None:
+    """Draw a standardized instruction banner to the frame."""
+
+    import cv2  # type: ignore
+
+    title = f"{shortcut} {mode_name.replace('_', ' ').title()} | {hints}"
+    cv2.putText(frame, title, position, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, 2)
 
 
 # =========================================================================
@@ -304,29 +338,25 @@ def draw_ecg_monitor(
     pts = []
     cy = y + h // 2
     for px in range(w):
-        # Normalized sample in 0..1 per pulse cycle
         val = ((px / 75.0) + phase) % 1.0
-        # ECG synthesis: P-wave, Q-dip, R-spike, S-dip, T-wave
         dy = 0.0
         if 0.15 < val < 0.25:
-            dy = -6.0 * math.sin((val - 0.15) * 10.0 * math.pi)  # P-wave
+            dy = -6.0 * math.sin((val - 0.15) * 10.0 * math.pi)
         elif 0.38 < val < 0.42:
-            dy = 5.0 * math.sin((val - 0.38) * 25.0 * math.pi)   # Q-dip
+            dy = 5.0 * math.sin((val - 0.38) * 25.0 * math.pi)
         elif 0.42 <= val < 0.48:
-            dy = -28.0 * math.sin((val - 0.42) * 16.6 * math.pi) # R-spike
+            dy = -28.0 * math.sin((val - 0.42) * 16.6 * math.pi)
         elif 0.48 <= val < 0.52:
-            dy = 8.0 * math.sin((val - 0.48) * 25.0 * math.pi)   # S-dip
+            dy = 8.0 * math.sin((val - 0.48) * 25.0 * math.pi)
         elif 0.62 < val < 0.76:
-            dy = -10.0 * math.sin((val - 0.62) * 7.14 * math.pi) # T-wave
+            dy = -10.0 * math.sin((val - 0.62) * 7.14 * math.pi)
         pts.append((x + px, int(cy + dy)))
 
     for i in range(len(pts) - 1):
-        # Fade older trace
         alpha_pt = 0.4 + 0.6 * (i / len(pts))
         c = (int(color[0] * alpha_pt), int(color[1] * alpha_pt), int(color[2] * alpha_pt))
         cv2.line(frame, pts[i], pts[i + 1], c, 1, cv2.LINE_AA)
 
-    # Lead glowing dot
     if pts:
         cv2.circle(frame, pts[-1], 3, (255, 255, 255), -1, cv2.LINE_AA)
 
@@ -347,7 +377,6 @@ def draw_hex_shield(
     fh, fw = frame.shape[:2]
     overlay = frame.copy()
 
-    # Hexagonal geometry
     hex_size = 28
     cols = int(radius * 2 // (hex_size * 1.5)) + 2
     rows = int(radius * 2 // (hex_size * 1.732)) + 2
@@ -361,7 +390,6 @@ def draw_hex_shield(
             hy = int(y_start + r * hex_size * 1.732 + (c % 2) * (hex_size * 0.866))
             dist = math.hypot(hx - cx, hy - cy)
             if dist <= radius:
-                # Shimmer intensity
                 shimmer = 0.5 + 0.5 * math.sin(phase * 4.0 + dist * 0.08)
                 hex_pts = []
                 for a in range(6):
@@ -371,14 +399,10 @@ def draw_hex_shield(
                     py = int(hy + (hex_size * 0.48) * math.sin(rad))
                     hex_pts.append((px, py))
                 hex_arr = np.array([hex_pts], dtype=np.int32)
-                # Cell fill
                 cell_col = (int(color[0] * shimmer * 0.4), int(color[1] * shimmer * 0.4), int(color[2] * shimmer * 0.4))
                 cv2.fillPoly(overlay, hex_arr, cell_col)
-                # Cell border
                 border_col = (int(color[0] * shimmer), int(color[1] * shimmer), int(color[2] * shimmer))
                 cv2.polylines(overlay, hex_arr, True, border_col, 1, cv2.LINE_AA)
 
-    # Outer perimeter barrier ring
     cv2.circle(overlay, (cx, cy), radius, color, 2, cv2.LINE_AA)
     frame[:] = cv2.addWeighted(frame, 1.0 - alpha, overlay, alpha, 0)
-

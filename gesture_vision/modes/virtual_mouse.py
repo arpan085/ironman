@@ -6,7 +6,8 @@ from typing import Any
 
 from ..core.base_mode import BaseMode
 from ..core.smoothing import PointFilter
-from .common import finger_xy
+from ..core.system_controls import is_pinch
+from .common import draw_instruction, finger_xy
 
 
 class VirtualMouseMode(BaseMode):
@@ -21,6 +22,8 @@ class VirtualMouseMode(BaseMode):
         self.filter = PointFilter(alpha=0.4)
         self._last_fingers = 0
         self._cooldown = 0
+        self.drag_mode = False
+        self.active = False
 
     def _mouse(self) -> Any:
         """Return optional pyautogui module when available."""
@@ -40,8 +43,12 @@ class VirtualMouseMode(BaseMode):
         pointer = finger_xy(landmarks, frame.shape)
         fingers = int(landmarks.get("fingers_up", 0))
         mouse = self._mouse()
+        thumb = landmarks.get("thumb_tip")
+        index = landmarks.get("index_tip")
+        activated = is_pinch(thumb, index) and fingers <= 2
 
-        if pointer is not None and mouse is not None:
+        if pointer is not None and mouse is not None and activated:
+            self.active = True
             h, w = frame.shape[:2]
             sx, sy = mouse.size()
             smoothed = self.filter.apply(*pointer)
@@ -59,7 +66,9 @@ class VirtualMouseMode(BaseMode):
                 elif fingers == 5:
                     mouse.scroll(40)
                 self._cooldown = 8
+        else:
+            self.active = False
 
         self._last_fingers = fingers
-        cv2.putText(frame, "7 Virtual Mouse | 2 left 3 right 4 double 5 scroll", (18, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 229, 255), 2, cv2.LINE_AA)
+        draw_instruction(frame, "7", "virtual_mouse", "Pinch to move | 2 left | 3 right | 4 double | 5 scroll")
         return frame

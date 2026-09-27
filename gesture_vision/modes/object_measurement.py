@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from ..core.smoothing import FloatFilter
 from ..core.system_controls import distance
+from .common import draw_instruction
 
 
 class ObjectMeasurementMode(BaseMode):
@@ -18,6 +20,7 @@ class ObjectMeasurementMode(BaseMode):
         """Initialize pixels-per-unit calibration."""
 
         self.px_per_cm = 400.0
+        self.filter = FloatFilter(alpha=0.25)
 
     def calibrate(self, distance_norm: float, real_cm: float = 5.0) -> None:
         """Update calibration ratio from known reference distance."""
@@ -35,7 +38,8 @@ class ObjectMeasurementMode(BaseMode):
         cm = 0.0
         if thumb is not None and index is not None:
             d = distance(thumb, index)
-            cm = (d * 1000.0) / max(self.px_per_cm, 1e-6)
-        cv2.putText(frame, "F2 Measurement", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            smoothed = self.filter.apply((d * 1000.0) / max(self.px_per_cm, 1e-6))
+            cm = smoothed
+        draw_instruction(frame, "F2", "object_measurement", "Pinch to measure")
         cv2.putText(frame, f"Pinch distance: {cm:.2f} cm", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (80, 255, 180), 2)
         return frame

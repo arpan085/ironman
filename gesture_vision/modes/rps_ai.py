@@ -6,6 +6,7 @@ import random
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from .common import draw_instruction
 
 
 class RockPaperScissorsMode(BaseMode):
@@ -57,9 +58,7 @@ class RockPaperScissorsMode(BaseMode):
         import cv2  # type: ignore
 
         self.last_fingers = int(landmarks.get("fingers_up", 0))
-        hint = f"Fingers: {self.last_fingers} | ENTER play"
-        cv2.putText(frame, "4 RPS AI", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
-        cv2.putText(frame, hint, (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 255), 1)
-        cv2.putText(frame, f"You: {self.player_choice}  AI: {self.ai_choice}", (18, 98), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 220, 100), 2)
-        cv2.putText(frame, f"Score {self.player_score} : {self.ai_score}", (18, 132), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (80, 255, 100), 2)
+        draw_instruction(frame, "4", "rock_paper_scissors", f"Fingers: {self.last_fingers} | ENTER play")
+        cv2.putText(frame, f"You: {self.player_choice}  AI: {self.ai_choice}", (18, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 220, 100), 2)
+        cv2.putText(frame, f"Score {self.player_score} : {self.ai_score}", (18, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (80, 255, 100), 2)
         return frame

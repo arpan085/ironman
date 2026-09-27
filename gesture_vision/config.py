@@ -9,6 +9,32 @@ from pathlib import Path
 from typing import Any
 
 
+def _coerce_bool(value: Any, default: bool) -> bool:
+    """Convert common truthy/falsy values to booleans."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off", ""}:
+            return False
+    return default
+
+
+def _coerce_string_list(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Convert config values to a non-empty tuple of strings."""
+
+    if isinstance(value, (list, tuple)):
+        cleaned = tuple(str(item).strip() for item in value if str(item).strip())
+        if cleaned:
+            return cleaned
+    return default
+
+
 @dataclass(slots=True)
 class AppConfig:
     """Strongly typed runtime configuration."""
@@ -30,6 +56,13 @@ class AppConfig:
     jarvis_voice: bool = True
     jarvis_model: str = "gemini-3.8-flash"
     stark_hud: bool = True
+    wake_word: str = "jarvis"
+    startup_chime_enabled: bool = True
+    shutdown_chime_enabled: bool = True
+    cinematic_hud_enabled: bool = True
+    suit_status_voice_enabled: bool = True
+    command_confirmations: tuple[str, ...] = ("Certainly, sir.", "Engaging now.")
+
 
 
 def _default_path() -> Path:
@@ -101,10 +134,16 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         eraser_size=max(1, int(raw.get("eraser_size", 40))),
         smooth_factor=float(raw.get("smooth_factor", 0.35)),
         record_output_dir=str(raw.get("record_output_dir", "captures")),
-        sidebar_enabled=bool(raw.get("sidebar_enabled", False)),
+        sidebar_enabled=_coerce_bool(raw.get("sidebar_enabled", False), False),
         gemini_api_key=gemini_key,
-        jarvis_enabled=bool(raw.get("jarvis_enabled", True)),
-        jarvis_voice=bool(raw.get("jarvis_voice", True)),
-        jarvis_model=str(raw.get("jarvis_model", "gemini-2.5-flash")),
-        stark_hud=bool(raw.get("stark_hud", True)),
+        jarvis_enabled=_coerce_bool(raw.get("jarvis_enabled", True), True),
+        jarvis_voice=_coerce_bool(raw.get("jarvis_voice", True), True),
+        jarvis_model=str(raw.get("jarvis_model", "gemini-3.8-flash")),
+        stark_hud=_coerce_bool(raw.get("stark_hud", True), True),
+        wake_word=str(raw.get("wake_word", "jarvis")).strip().lower() or "jarvis",
+        startup_chime_enabled=_coerce_bool(raw.get("startup_chime_enabled", True), True),
+        shutdown_chime_enabled=_coerce_bool(raw.get("shutdown_chime_enabled", True), True),
+        cinematic_hud_enabled=_coerce_bool(raw.get("cinematic_hud_enabled", True), True),
+        suit_status_voice_enabled=_coerce_bool(raw.get("suit_status_voice_enabled", True), True),
+        command_confirmations=_coerce_string_list(raw.get("command_confirmations"), ("Certainly, sir.", "Engaging now.")),
     )

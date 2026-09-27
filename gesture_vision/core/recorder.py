@@ -36,7 +36,7 @@ class Recorder:
     def start_video(self, width: int, height: int, fps: int) -> Path | None:
         """Start video recording with MP4 codec."""
 
-        if self.writer is not None:
+        if self.is_open():
             return None
         try:
             import cv2  # type: ignore
@@ -45,15 +45,23 @@ class Recorder:
             path = self.output_dir / f"rec_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             self.writer = cv2.VideoWriter(str(path), fourcc, max(1, fps), (width, height))
+            if not self.is_open():
+                self.writer = None
+                return None
             return path
         except Exception:
             self.writer = None
             return None
 
+    def is_open(self) -> bool:
+        """Return True when the video writer is open and ready."""
+
+        return self.writer is not None and hasattr(self.writer, "isOpened") and self.writer.isOpened()
+
     def write(self, frame: Any) -> None:
         """Write a frame to active video writer."""
 
-        if self.writer is not None:
+        if self.is_open():
             self.writer.write(frame)
 
     def is_recording(self) -> bool:
@@ -64,6 +72,6 @@ class Recorder:
     def stop_video(self) -> None:
         """Close active video writer."""
 
-        if self.writer is not None:
+        if self.is_open():
             self.writer.release()
-            self.writer = None
+        self.writer = None

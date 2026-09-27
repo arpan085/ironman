@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 
 from ..core.base_mode import BaseMode
-from .common import draw_hud_panel
+from .common import draw_hud_panel, draw_instruction
 
 
 class PerformanceHUDMode(BaseMode):
@@ -47,16 +47,23 @@ class PerformanceHUDMode(BaseMode):
                 self.cpu = float(self._psutil.cpu_percent(interval=None) or 0.0)
                 self.ram = float(self._psutil.virtual_memory().percent or 0.0)
             except Exception:
-                self.cpu = 0.0
+                self.cpu = float(context.get("cpu_load", 0.0))
                 self.ram = 0.0
+        else:
+            self.cpu = float(context.get("cpu_load", 0.0))
 
+        temperature_c = float(context.get("temperature_c", 0.0))
+        battery_percent = context.get("battery_percent")
         h, w = frame.shape[:2]
         target = int(context.get("fps_target", 0) or 0)
 
-        # Draw HUD Panel
-        draw_hud_panel(frame, 18, 56, 320, 165, title="PERFORMANCE TELEMETRY")
+        draw_instruction(frame, "F10", "performance_hud", "System telemetry")
 
-        fps_text = f"FPS: {self.fps:.1f} / {target} TARGET"
+        # Draw HUD Panel
+        panel_h = 200 if (temperature_c or battery_percent is not None) else 165
+        draw_hud_panel(frame, 18, 56, 320, panel_h, title="PERFORMANCE TELEMETRY")
+
+        fps_text = f"FPS: {self.fps:.1f} / {target} TARGET" if target else f"FPS: {self.fps:.1f}"
         cpu_text = f"CPU LOAD: {self.cpu:.1f}%"
         ram_text = f"RAM USAGE: {self.ram:.1f}%"
         res_text = f"RESOLUTION: {w}x{h}"
@@ -69,12 +76,17 @@ class PerformanceHUDMode(BaseMode):
         cv2.putText(frame, ram_text, (28, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.45, c_cyan, 1, cv2.LINE_AA)
         cv2.putText(frame, res_text, (28, 152), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1, cv2.LINE_AA)
 
-        # FPS bar
-        cv2.putText(frame, "FPS GAUGE:", (28, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1, cv2.LINE_AA)
+        # FPS gauge bar
         max_bar = 180
-        bar_ratio = min(1.0, max(0.0, self.fps / max(1, target)))
+        bar_ratio = min(1.0, max(0.0, self.fps / max(1, target or 30)))
         fill_w = int(max_bar * bar_ratio)
         cv2.rectangle(frame, (110, 170), (110 + max_bar, 184), (0, 80, 100), 1)
         cv2.rectangle(frame, (110, 170), (110 + fill_w, 184), c_green, -1)
+        cv2.putText(frame, "FPS GAUGE:", (28, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1, cv2.LINE_AA)
+
+        if temperature_c or battery_percent is not None:
+            batt_label = "--" if battery_percent is None else f"{battery_percent}%"
+            extra_text = f"TEMP: {temperature_c:.1f}C | BATT: {batt_label}"
+            cv2.putText(frame, extra_text, (28, 202), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 208, 120), 1, cv2.LINE_AA)
 
         return frame

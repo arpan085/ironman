@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.base_mode import BaseMode
+from .common import draw_instruction, resolve_package_path
 
 
 class MusicPlayerMode(BaseMode):
@@ -14,15 +15,18 @@ class MusicPlayerMode(BaseMode):
     name = "music_player"
     shortcut = "F5"
 
-    def __init__(self, music_dir: str = "music") -> None:
+    def __init__(self, music_dir: str | Path | None = None) -> None:
         """Initialize track list and playback state."""
 
-        p = Path(music_dir)
-        if not p.is_absolute() and not p.exists():
-            root_candidate = Path(__file__).resolve().parents[2] / music_dir
-            if root_candidate.exists():
-                p = root_candidate
-        self.music_dir = p
+        if music_dir is not None:
+            p = Path(music_dir)
+            if not p.is_absolute() and not p.exists():
+                root_candidate = Path(__file__).resolve().parents[2] / music_dir
+                if root_candidate.exists():
+                    p = root_candidate
+            self.music_dir = p
+        else:
+            self.music_dir = resolve_package_path("music")
         self.tracks = sorted([t for t in self.music_dir.glob("*.*") if t.suffix.lower() in {".mp3", ".wav", ".ogg"}]) if self.music_dir.exists() else []
         self.idx = 0
         self.is_playing = False
@@ -89,7 +93,7 @@ class MusicPlayerMode(BaseMode):
             self.idx = (self.idx - 1) % len(self.tracks)
             self._play_current()
 
-    def on_key(self, key: int, char: str) -> bool:
+    def on_key(self, key: int, char: str = "") -> bool:
         """Handle playback transport keys."""
 
         if key == ord("n"):
@@ -108,12 +112,12 @@ class MusicPlayerMode(BaseMode):
 
         import cv2  # type: ignore
 
-        cv2.putText(frame, "F5 Music Player", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        name = self.tracks[self.idx].name if self.tracks else "No tracks"
+        status = "Playing" if self.is_playing else "Paused"
+        draw_instruction(frame, "F5", "music_player", "N next | B back | SPACE play/pause")
         if not self.tracks:
             cv2.putText(frame, "No tracks found - add mp3/wav/ogg files to ./music", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 255, 220), 2)
             return frame
-        name = self.tracks[self.idx].name
-        status = "Playing" if self.is_playing else "Paused"
         cv2.putText(frame, f"Track: {name}", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 255, 220), 2)
-        cv2.putText(frame, f"State: {status} | N next | B back | SPACE play/pause", (18, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 220, 255), 2)
+        cv2.putText(frame, f"State: {status}", (18, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 220, 255), 2)
         return frame

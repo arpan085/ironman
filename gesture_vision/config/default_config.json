@@ -15,5 +15,11 @@
   "jarvis_enabled": true,
   "jarvis_voice": true,
   "jarvis_model": "gemini-3.8-flash",
-  "stark_hud": true
+  "stark_hud": true,
+  "wake_word": "jarvis",
+  "startup_chime_enabled": true,
+  "shutdown_chime_enabled": true,
+  "cinematic_hud_enabled": true,
+  "suit_status_voice_enabled": true,
+  "command_confirmations": ["Certainly, sir.", "Engaging now."]
 }

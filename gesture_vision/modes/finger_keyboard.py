@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base_mode import BaseMode
-from .common import finger_xy
+from .common import draw_instruction, finger_xy
 
 
 class FingerKeyboardMode(BaseMode):
@@ -21,7 +21,8 @@ class FingerKeyboardMode(BaseMode):
         self.keys = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM<"]
         self.layout: list[tuple[tuple[int, int, int, int], str]] = []
         self._cooldown = 0
-        self._highlight = None
+        self._highlight: tuple[int, int, int, int] | None = None
+        self.hover_key: str | None = None
 
     def _build_layout(self, height: int) -> list[tuple[tuple[int, int, int, int], str]]:
         """Return key rectangles for the current frame height."""
@@ -53,7 +54,7 @@ class FingerKeyboardMode(BaseMode):
 
         self.typed = ""
 
-    def on_key(self, key: int, char: str) -> bool:
+    def on_key(self, key: int, char: str = "") -> bool:
         """Support backspace, clear, and physical keys from the keyboard."""
 
         if key == 8:
@@ -61,6 +62,9 @@ class FingerKeyboardMode(BaseMode):
             return True
         if key == ord("c"):
             self.clear()
+            return True
+        if key in {ord("h"), ord("H")}:
+            self.type_key("H" if key == ord("H") else "h")
             return True
         if char and len(char) == 1 and (char.isalnum() or char in " .,!?-"):
             self.type_key(char.upper())
@@ -88,7 +92,7 @@ class FingerKeyboardMode(BaseMode):
                         self._cooldown = 18
                     break
 
-        cv2.putText(frame, "8 Finger Keyboard | hover to type", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        draw_instruction(frame, "8", "finger_keyboard", "Hover to type | H adds H | C to clear")
         cv2.putText(frame, f"Typed: {self.typed[-40:]}", (18, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (80, 255, 200), 2)
         for (x1, y1, x2, y2), key in self.layout:
             if self._highlight == (x1, y1, x2, y2):
